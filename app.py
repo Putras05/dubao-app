@@ -14,7 +14,7 @@ from models.mlr  import run_mlr
 from models.cart import run_cart
 from core.validate import validate_params
 from ui.css import inject_global_css, inject_theme_css
-from ui.js import inject_theme_js, force_sidebar_open_js
+from ui.js import inject_theme_js, force_sidebar_open_js, hide_streamlit_badges_js
 from ui.sidebar import render_sidebar
 
 import app_pages.dashboard  as _pg_dash
@@ -42,6 +42,7 @@ inject_global_css()
 inject_theme_css(_T)
 inject_theme_js(_T)
 force_sidebar_open_js()
+hide_streamlit_badges_js()
 
 # Preload 3 tickers 1 lần duy nhất mỗi session → UX mượt hơn
 from core.preload import preload_all_tickers, trigger_bg_cart

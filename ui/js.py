@@ -240,6 +240,96 @@ def inject_theme_js(T: dict) -> None:
 """, height=0, scrolling=False)
 
 
+def hide_streamlit_badges_js() -> None:
+    """Ẩn Streamlit Cloud badges ('Created by X' avatar + 'Hosted with Streamlit' origami
+    + Manage app button) — CSS không bắt được vì Streamlit Cloud render chúng BẰNG JS
+    sau khi app load. Dùng MutationObserver quét liên tục parent DOM."""
+    _components.html("""
+<script>
+(function() {
+    var doc = window.parent.document;
+
+    function hideBadges() {
+        // 1. Ẩn ALL link trỏ tới streamlit.io / share.streamlit.io (trừ docs)
+        doc.querySelectorAll('a[href*="streamlit.io"]').forEach(function(el) {
+            if (!el.href.includes('docs.streamlit.io')) {
+                el.style.setProperty('display', 'none', 'important');
+                // Ẩn luôn parent 2-3 cấp để bỏ hết avatar + text xung quanh
+                var p = el.parentElement;
+                for (var i = 0; i < 3 && p && p.tagName !== 'BODY'; i++) {
+                    if (p.textContent && (
+                        p.textContent.includes('Hosted with Streamlit') ||
+                        p.textContent.includes('Created by') ||
+                        p.textContent.includes('Manage app')
+                    )) {
+                        p.style.setProperty('display', 'none', 'important');
+                    }
+                    p = p.parentElement;
+                }
+            }
+        });
+
+        // 2. Ẩn theo selector pattern
+        var selectors = [
+            '[data-testid="stToolbar"]',
+            '[data-testid="stDecoration"]',
+            '[data-testid="stAppDeployButton"]',
+            '[data-testid="stStatusWidget"]',
+            '[data-testid="stHeader"]',
+            '[data-testid*="manage-app"]',
+            '[data-testid*="viewer"]',
+            '[class*="viewerBadge"]',
+            '[class*="ViewerBadge"]',
+            '[class*="profileContainer"]',
+            '[class*="_profileContainer"]',
+            '.stDeployButton',
+            'button[kind="header"]',
+            'button[data-testid="baseButton-header"]',
+            '#MainMenu'
+        ];
+        selectors.forEach(function(sel) {
+            doc.querySelectorAll(sel).forEach(function(el) {
+                el.style.setProperty('display',    'none', 'important');
+                el.style.setProperty('visibility', 'hidden', 'important');
+            });
+        });
+
+        // 3. Text-content match — ẩn element chứa ĐÚNG text "Created by X" / "Hosted with"
+        doc.querySelectorAll('div, span, a').forEach(function(el) {
+            if (el._checked) return;
+            var txt = (el.textContent || '').trim();
+            if (txt.length > 100) return;  // skip container lớn
+            if (txt === 'Hosted with Streamlit' ||
+                txt.startsWith('Created by ') ||
+                txt === 'Manage app' ||
+                txt === 'Fork this app') {
+                // Ẩn luôn parent container (chứa cả avatar/icon)
+                var p = el;
+                for (var i = 0; i < 4 && p && p.tagName !== 'BODY'; i++) {
+                    p.style.setProperty('display', 'none', 'important');
+                    p._checked = true;
+                    if (p.parentElement && p.parentElement.children.length <= 3) {
+                        p = p.parentElement;
+                    } else break;
+                }
+            }
+        });
+    }
+
+    // Chạy ngay + retry nhiều lần (phòng badges load trễ)
+    [10, 50, 150, 400, 900, 2000, 5000].forEach(function(ms) {
+        setTimeout(hideBadges, ms);
+    });
+
+    // Observer bắt DOM thay đổi
+    new MutationObserver(function() {
+        hideBadges();
+    }).observe(doc.body, { childList: true, subtree: true });
+})();
+</script>
+""", height=0, scrolling=False)
+
+
 def force_sidebar_open_js() -> None:
     _components.html("""
 <script>
