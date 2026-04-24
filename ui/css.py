@@ -1375,28 +1375,49 @@ _GLOBAL_CSS = """<style>
 html, body, [class*="st-"] { font-family: 'Inter','Segoe UI',system-ui,sans-serif !important; }
 
 /* ══ HIDE STREAMLIT CLOUD BADGES / BRANDING (cho demo NCKH sạch sẽ) ══════════ */
-/* Ẩn origami Streamlit đỏ + avatar GitHub + Manage app button ở góc phải dưới */
-[data-testid="stToolbar"] { visibility: hidden !important; display: none !important; }
-[data-testid="stDecoration"] { display: none !important; }
-[data-testid="stAppDeployButton"] { display: none !important; }
-[data-testid="stStatusWidget"] { display: none !important; }
-[data-testid="stHeader"] { display: none !important; }
-/* Viewer badge "Hosted with Streamlit" */
-.viewerBadge_container__1QSob,
-.viewerBadge_link__1S137,
-.viewerBadge_text__1JaDK,
-.styles_viewerBadge__1yB5_,
-.styles_terminalButton__JBj5T,
-.stDeployButton,
+/* Pattern matching mạnh — không phụ thuộc hash suffix của Streamlit CSS-in-JS */
+[data-testid="stToolbar"],
+[data-testid="stDecoration"],
+[data-testid="stAppDeployButton"],
+[data-testid="stStatusWidget"],
+[data-testid="stHeader"],
+[data-testid="stAppViewBlockContainer"] + div,
+[data-testid="stMainMenu"],
+#MainMenu,
+header[data-testid="stHeader"],
 div[class*="viewerBadge"],
+div[class*="ViewerBadge"],
+a[class*="viewerBadge"],
+span[class*="viewerBadge"],
 div[class*="_profileContainer"],
-a[class*="viewerBadge"] { display: none !important; visibility: hidden !important; }
-/* Footer "Made with Streamlit" */
-footer, [data-testid="stBottom"] { visibility: hidden !important; display: none !important; }
-#MainMenu { visibility: hidden !important; display: none !important; }
-/* Main-menu 3 chấm + hamburger */
+div[class*="_profile_container"],
+div[class*="profileContainer"],
+span[class*="_profileContainer"],
+a[href*="share.streamlit.io"],
+a[href*="streamlit.io/cloud"],
+a[href*="streamlit.io"]:not([href*="docs.streamlit.io"]),
 button[kind="header"],
-button[data-testid="baseButton-header"] { display: none !important; }
+button[data-testid="baseButton-header"],
+button[data-testid="manage-app-button"],
+.stDeployButton,
+.stAppDeployButton,
+footer,
+[data-testid="stBottom"] [data-testid*="viewer"],
+div[data-testid="manage-app-button"] {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    width: 0 !important;
+    overflow: hidden !important;
+    position: absolute !important;
+    left: -9999px !important;
+}
+
+/* Block mọi element có chữ "Hosted with Streamlit" hoặc "Created by" */
+div:has(> a[href*="streamlit.io"]),
+div:has(> span:only-child[class*="viewerBadge"]) {
+    display: none !important;
+}
 
 /* Desktop: constrain max-width để không bị stretch xấu trên 4K/ultrawide.
    Auto center với margin:auto. Mobile media-query bên dưới override khi cần. */
