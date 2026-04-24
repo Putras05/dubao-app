@@ -1374,6 +1374,30 @@ _GLOBAL_CSS = """<style>
 *, *::before, *::after { box-sizing: border-box; }
 html, body, [class*="st-"] { font-family: 'Inter','Segoe UI',system-ui,sans-serif !important; }
 
+/* ══ HIDE STREAMLIT CLOUD BADGES / BRANDING (cho demo NCKH sạch sẽ) ══════════ */
+/* Ẩn origami Streamlit đỏ + avatar GitHub + Manage app button ở góc phải dưới */
+[data-testid="stToolbar"] { visibility: hidden !important; display: none !important; }
+[data-testid="stDecoration"] { display: none !important; }
+[data-testid="stAppDeployButton"] { display: none !important; }
+[data-testid="stStatusWidget"] { display: none !important; }
+[data-testid="stHeader"] { display: none !important; }
+/* Viewer badge "Hosted with Streamlit" */
+.viewerBadge_container__1QSob,
+.viewerBadge_link__1S137,
+.viewerBadge_text__1JaDK,
+.styles_viewerBadge__1yB5_,
+.styles_terminalButton__JBj5T,
+.stDeployButton,
+div[class*="viewerBadge"],
+div[class*="_profileContainer"],
+a[class*="viewerBadge"] { display: none !important; visibility: hidden !important; }
+/* Footer "Made with Streamlit" */
+footer, [data-testid="stBottom"] { visibility: hidden !important; display: none !important; }
+#MainMenu { visibility: hidden !important; display: none !important; }
+/* Main-menu 3 chấm + hamburger */
+button[kind="header"],
+button[data-testid="baseButton-header"] { display: none !important; }
+
 /* Desktop: constrain max-width để không bị stretch xấu trên 4K/ultrawide.
    Auto center với margin:auto. Mobile media-query bên dưới override khi cần. */
 .main .block-container {
