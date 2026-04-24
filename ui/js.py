@@ -241,90 +241,155 @@ def inject_theme_js(T: dict) -> None:
 
 
 def hide_streamlit_badges_js() -> None:
-    """Ẩn Streamlit Cloud badges ('Created by X' avatar + 'Hosted with Streamlit' origami
-    + Manage app button) — CSS không bắt được vì Streamlit Cloud render chúng BẰNG JS
-    sau khi app load. Dùng MutationObserver quét liên tục parent DOM."""
+    """AGGRESSIVE fix: ẩn Streamlit Cloud badges — chạy ở TẤT CẢ frame level
+    (iframe → parent → top) + setInterval 200ms permanent + CSS injected trực tiếp
+    vào parent head. Cố gắng tối đa trong khả năng của free tier Streamlit."""
     _components.html("""
 <script>
 (function() {
-    var doc = window.parent.document;
+    // Cố gắng lấy document ở level cao nhất có thể (bypass iframe)
+    function getTargetDocs() {
+        var docs = [];
+        try { docs.push(window.parent.document); } catch(e) {}
+        try { if (window.top !== window.parent) docs.push(window.top.document); } catch(e) {}
+        return docs;
+    }
 
-    function hideBadges() {
-        // 1. Ẩn ALL link trỏ tới streamlit.io / share.streamlit.io (trừ docs)
-        doc.querySelectorAll('a[href*="streamlit.io"]').forEach(function(el) {
-            if (!el.href.includes('docs.streamlit.io')) {
-                el.style.setProperty('display', 'none', 'important');
-                // Ẩn luôn parent 2-3 cấp để bỏ hết avatar + text xung quanh
-                var p = el.parentElement;
-                for (var i = 0; i < 3 && p && p.tagName !== 'BODY'; i++) {
-                    if (p.textContent && (
-                        p.textContent.includes('Hosted with Streamlit') ||
-                        p.textContent.includes('Created by') ||
-                        p.textContent.includes('Manage app')
-                    )) {
-                        p.style.setProperty('display', 'none', 'important');
-                    }
-                    p = p.parentElement;
-                }
+    // Inject CSS trực tiếp vào <head> của parent — mạnh hơn st.markdown
+    function injectCSS(doc) {
+        if (doc._badgeCssInjected) return;
+        var css = `
+            [class*="viewerBadge"], [class*="ViewerBadge"],
+            [class*="profileContainer"], [class*="_profileContainer"],
+            [class*="profile_container"],
+            [data-testid="stToolbar"], [data-testid="stDecoration"],
+            [data-testid="stAppDeployButton"], [data-testid="stStatusWidget"],
+            [data-testid="stHeader"], [data-testid*="manage-app"],
+            [data-testid*="viewer"], [data-testid*="profile"],
+            .stDeployButton, .stAppDeployButton,
+            button[kind="header"], button[data-testid="baseButton-header"],
+            #MainMenu, footer {
+                display: none !important;
+                visibility: hidden !important;
+                opacity: 0 !important;
+                width: 0 !important;
+                height: 0 !important;
+                position: absolute !important;
+                left: -99999px !important;
+                top: -99999px !important;
+                z-index: -1 !important;
+                pointer-events: none !important;
             }
-        });
+            a[href*="streamlit.io"]:not([href*="docs.streamlit.io"]) {
+                display: none !important;
+                visibility: hidden !important;
+            }
+        `;
+        try {
+            var style = doc.createElement('style');
+            style.id = '__hide_streamlit_badges__';
+            style.textContent = css;
+            (doc.head || doc.documentElement).appendChild(style);
+            doc._badgeCssInjected = true;
+        } catch(e) {}
+    }
 
-        // 2. Ẩn theo selector pattern
-        var selectors = [
-            '[data-testid="stToolbar"]',
-            '[data-testid="stDecoration"]',
-            '[data-testid="stAppDeployButton"]',
-            '[data-testid="stStatusWidget"]',
-            '[data-testid="stHeader"]',
-            '[data-testid*="manage-app"]',
-            '[data-testid*="viewer"]',
-            '[class*="viewerBadge"]',
-            '[class*="ViewerBadge"]',
-            '[class*="profileContainer"]',
-            '[class*="_profileContainer"]',
-            '.stDeployButton',
-            'button[kind="header"]',
-            'button[data-testid="baseButton-header"]',
-            '#MainMenu'
-        ];
-        selectors.forEach(function(sel) {
-            doc.querySelectorAll(sel).forEach(function(el) {
-                el.style.setProperty('display',    'none', 'important');
-                el.style.setProperty('visibility', 'hidden', 'important');
-            });
-        });
-
-        // 3. Text-content match — ẩn element chứa ĐÚNG text "Created by X" / "Hosted with"
-        doc.querySelectorAll('div, span, a').forEach(function(el) {
-            if (el._checked) return;
-            var txt = (el.textContent || '').trim();
-            if (txt.length > 100) return;  // skip container lớn
-            if (txt === 'Hosted with Streamlit' ||
-                txt.startsWith('Created by ') ||
-                txt === 'Manage app' ||
-                txt === 'Fork this app') {
-                // Ẩn luôn parent container (chứa cả avatar/icon)
-                var p = el;
-                for (var i = 0; i < 4 && p && p.tagName !== 'BODY'; i++) {
-                    p.style.setProperty('display', 'none', 'important');
-                    p._checked = true;
-                    if (p.parentElement && p.parentElement.children.length <= 3) {
+    function hideBadges(doc) {
+        if (!doc || !doc.querySelectorAll) return;
+        try {
+            // 1. Streamlit.io links + parent container
+            doc.querySelectorAll('a[href*="streamlit.io"]').forEach(function(el) {
+                if (el.href && !el.href.includes('docs.streamlit.io')) {
+                    el.style.cssText = 'display:none !important;visibility:hidden !important';
+                    var p = el.parentElement;
+                    for (var i = 0; i < 5 && p && p.tagName !== 'BODY'; i++) {
+                        p.style.cssText = 'display:none !important;visibility:hidden !important';
                         p = p.parentElement;
-                    } else break;
+                    }
                 }
-            }
+            });
+
+            // 2. Text match — "Hosted with Streamlit", "Created by X", "Manage app"
+            doc.querySelectorAll('div, span, a, button').forEach(function(el) {
+                if (el._processed) return;
+                var txt = (el.textContent || '').trim();
+                if (txt.length > 60) return;
+                if (txt === 'Hosted with Streamlit' ||
+                    txt.startsWith('Created by ') ||
+                    txt === 'Manage app' ||
+                    txt === 'Fork this app' ||
+                    (txt === 'Streamlit' && el.closest && el.closest('[class*="adge"], [class*="ooter"]'))) {
+                    var p = el;
+                    for (var i = 0; i < 6 && p && p.tagName !== 'BODY'; i++) {
+                        p.style.cssText = 'display:none !important;visibility:hidden !important;height:0 !important';
+                        p._processed = true;
+                        if (p.parentElement && p.parentElement.children.length <= 4 && p.parentElement.tagName !== 'BODY') {
+                            p = p.parentElement;
+                        } else break;
+                    }
+                }
+            });
+
+            // 3. Viewer badge class patterns — catch-all wildcards
+            [
+                '[class*="viewerBadge"]','[class*="ViewerBadge"]',
+                '[class*="profileContainer"]','[class*="_profileContainer"]',
+                '[class*="profile_container"]','[data-testid*="viewer"]',
+                '[data-testid*="profile"]','[data-testid*="manage-app"]',
+                '[data-testid="stToolbar"]','[data-testid="stDecoration"]',
+                '[data-testid="stAppDeployButton"]','[data-testid="stStatusWidget"]',
+                '[data-testid="stHeader"]','.stDeployButton','.stAppDeployButton',
+                'button[kind="header"]','button[data-testid="baseButton-header"]','#MainMenu'
+            ].forEach(function(sel) {
+                doc.querySelectorAll(sel).forEach(function(el) {
+                    el.style.cssText = 'display:none !important;visibility:hidden !important;height:0 !important';
+                });
+            });
+
+            // 4. Fixed position elements ở góc phải dưới (thường là badges)
+            doc.querySelectorAll('div, span').forEach(function(el) {
+                if (el._checkedFixed) return;
+                el._checkedFixed = true;
+                try {
+                    var cs = doc.defaultView.getComputedStyle(el);
+                    if (cs.position === 'fixed' && cs.right !== 'auto' && cs.bottom !== 'auto') {
+                        var rect = el.getBoundingClientRect();
+                        if (rect.width < 300 && rect.height < 100 && rect.width > 10) {
+                            var html = (el.innerHTML || '').toLowerCase();
+                            if (html.includes('streamlit') || html.includes('created by')) {
+                                el.style.cssText = 'display:none !important';
+                            }
+                        }
+                    }
+                } catch(e) {}
+            });
+        } catch(e) {}
+    }
+
+    function tickAll() {
+        getTargetDocs().forEach(function(d) {
+            injectCSS(d);
+            hideBadges(d);
         });
     }
 
-    // Chạy ngay + retry nhiều lần (phòng badges load trễ)
-    [10, 50, 150, 400, 900, 2000, 5000].forEach(function(ms) {
-        setTimeout(hideBadges, ms);
+    // Initial burst
+    [0, 10, 50, 100, 200, 400, 800, 1500, 3000, 5000, 8000].forEach(function(ms) {
+        setTimeout(tickAll, ms);
     });
 
-    // Observer bắt DOM thay đổi
-    new MutationObserver(function() {
-        hideBadges();
-    }).observe(doc.body, { childList: true, subtree: true });
+    // Persistent interval — 200ms vĩnh viễn (badge nào hiện lại là ẩn ngay)
+    setInterval(tickAll, 200);
+
+    // MutationObserver trên tất cả parent docs
+    getTargetDocs().forEach(function(d) {
+        try {
+            new MutationObserver(tickAll).observe(d.body || d.documentElement, {
+                childList: true, subtree: true, attributes: true,
+                attributeFilter: ['class','style']
+            });
+        } catch(e) {}
+    });
 })();
 </script>
 """, height=0, scrolling=False)
