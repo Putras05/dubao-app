@@ -44,65 +44,28 @@ inject_theme_js(_T)
 force_sidebar_open_js()
 hide_streamlit_badges_js()
 
-# Ẩn hoàn toàn badge "Hosted with Streamlit" + các phần tử thương hiệu Streamlit Cloud
+# ẨN UI CHUẨN: dùng config.toml với toolbarMode="minimal" (đã set ở .streamlit/config.toml)
+# → Manage app button, hamburger menu, header bị ẩn CHÍNH THỨC (không cần CSS hack)
+# Badge "Hosted with Streamlit" — branding bắt buộc của Streamlit free tier,
+# không có cách technical nào ẩn 100% (các hack CSS/JS hoạt động không ổn định).
+# Muốn ẩn hoàn toàn: Streamlit Starter $20/tháng hoặc đổi host sang Render.com/VPS.
 st.markdown("""
 <style>
-    /* Ẩn badge "Hosted with Streamlit" ở góc dưới phải */
-    .viewerBadge_container__1QSob,
-    .viewerBadge_link__1S137,
-    .viewerBadge_text__1JaDK,
+    /* CSS backup — ẩn các phần tử có class/attribute rõ ràng là Streamlit Cloud branding.
+       Không dùng <script> vì Streamlit sanitize và không chạy script trong st.markdown. */
+    [class*="viewerBadge"], [class*="ViewerBadge"],
+    [class*="_profileContainer_"], [class*="profileContainer"],
     [data-testid="stDecoration"],
-    [class*="viewerBadge"],
-    [class*="_profileContainer_"],
-    a[href*="streamlit.io"],
-    a[href*="share.streamlit.io"],
-    ._profileContainer_gzau3_53,
-    ._container_gzau3_1,
-    ._viewerBadge_nim44_23,
-    ._link_gzau3_10 {
+    [data-testid="stToolbar"],
+    [data-testid="stStatusWidget"],
+    [data-testid*="manage-app"],
+    .stDeployButton, .stAppDeployButton,
+    a[href*="share.streamlit.io"]:not([href*="docs"]),
+    #MainMenu {
         display: none !important;
         visibility: hidden !important;
-        opacity: 0 !important;
-        pointer-events: none !important;
     }
-
-    /* Ẩn menu 3 chấm góc trên phải */
-    #MainMenu {visibility: hidden !important; display: none !important;}
-
-    /* Ẩn footer "Made with Streamlit" */
-    footer {visibility: hidden !important; display: none !important;}
-
-    /* Ẩn header Streamlit */
-    header {visibility: hidden !important; display: none !important;}
-
-    /* Ẩn nút Deploy */
-    .stDeployButton {display: none !important;}
-    [data-testid="stToolbar"] {display: none !important;}
-    [data-testid="stStatusWidget"] {display: none !important;}
 </style>
-
-<script>
-// Backup: Ẩn bằng JS nếu CSS không đủ (Streamlit đôi khi đổi class name)
-setInterval(function() {
-    const selectors = [
-        'a[href*="streamlit.io"]',
-        'a[href*="share.streamlit.io"]',
-        '[class*="viewerBadge"]',
-        '[class*="_profileContainer"]',
-        '[data-testid="stDecoration"]',
-        '#MainMenu',
-        'footer',
-        '.stDeployButton'
-    ];
-    selectors.forEach(sel => {
-        document.querySelectorAll(sel).forEach(el => {
-            el.style.display = 'none';
-            el.style.visibility = 'hidden';
-            el.remove();
-        });
-    });
-}, 500);
-</script>
 """, unsafe_allow_html=True)
 
 # Preload 3 tickers 1 lần duy nhất mỗi session → UX mượt hơn

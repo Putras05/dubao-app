@@ -1,0 +1,16 @@
+[client]
+# Minimal toolbar → ẩn "Manage app" button, hamburger menu, header
+# Đây là cách CHÍNH THỨC của Streamlit để ẩn toolbar (không cần CSS hack)
+toolbarMode = "minimal"
+showErrorDetails = false
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+base = "light"
+primaryColor = "#1565C0"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F1F5F9"
+textColor = "#0F172A"
+font = "sans serif"
