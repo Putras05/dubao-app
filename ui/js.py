@@ -241,155 +241,79 @@ def inject_theme_js(T: dict) -> None:
 
 
 def hide_streamlit_badges_js() -> None:
-    """AGGRESSIVE fix: ẩn Streamlit Cloud badges — chạy ở TẤT CẢ frame level
-    (iframe → parent → top) + setInterval 200ms permanent + CSS injected trực tiếp
-    vào parent head. Cố gắng tối đa trong khả năng của free tier Streamlit."""
+    """Ẩn Streamlit Cloud badges — LIGHTWEIGHT version (không làm quá tải app).
+    Chỉ chạy initial burst + MutationObserver (event-driven, không polling)."""
     _components.html("""
 <script>
 (function() {
-    // Cố gắng lấy document ở level cao nhất có thể (bypass iframe)
-    function getTargetDocs() {
-        var docs = [];
-        try { docs.push(window.parent.document); } catch(e) {}
-        try { if (window.top !== window.parent) docs.push(window.top.document); } catch(e) {}
-        return docs;
-    }
+    var doc;
+    try { doc = window.parent.document; } catch(e) { return; }
 
-    // Inject CSS trực tiếp vào <head> của parent — mạnh hơn st.markdown
-    function injectCSS(doc) {
-        if (doc._badgeCssInjected) return;
-        var css = `
-            [class*="viewerBadge"], [class*="ViewerBadge"],
-            [class*="profileContainer"], [class*="_profileContainer"],
-            [class*="profile_container"],
-            [data-testid="stToolbar"], [data-testid="stDecoration"],
-            [data-testid="stAppDeployButton"], [data-testid="stStatusWidget"],
-            [data-testid="stHeader"], [data-testid*="manage-app"],
-            [data-testid*="viewer"], [data-testid*="profile"],
-            .stDeployButton, .stAppDeployButton,
-            button[kind="header"], button[data-testid="baseButton-header"],
-            #MainMenu, footer {
-                display: none !important;
-                visibility: hidden !important;
-                opacity: 0 !important;
-                width: 0 !important;
-                height: 0 !important;
-                position: absolute !important;
-                left: -99999px !important;
-                top: -99999px !important;
-                z-index: -1 !important;
-                pointer-events: none !important;
-            }
-            a[href*="streamlit.io"]:not([href*="docs.streamlit.io"]) {
-                display: none !important;
-                visibility: hidden !important;
-            }
-        `;
+    // Inject CSS 1 lần vào parent <head>
+    if (!doc._badgeCssInjected) {
         try {
             var style = doc.createElement('style');
             style.id = '__hide_streamlit_badges__';
-            style.textContent = css;
+            style.textContent = `
+                [class*="viewerBadge"], [class*="ViewerBadge"],
+                [class*="profileContainer"], [class*="_profileContainer"],
+                [data-testid="stToolbar"], [data-testid="stDecoration"],
+                [data-testid="stAppDeployButton"], [data-testid="stStatusWidget"],
+                [data-testid*="manage-app"], [data-testid*="viewer"],
+                .stDeployButton, .stAppDeployButton,
+                button[kind="header"], button[data-testid="baseButton-header"],
+                #MainMenu {
+                    display: none !important;
+                    visibility: hidden !important;
+                }
+                a[href*="streamlit.io"]:not([href*="docs.streamlit.io"]) {
+                    display: none !important;
+                }
+            `;
             (doc.head || doc.documentElement).appendChild(style);
             doc._badgeCssInjected = true;
         } catch(e) {}
     }
 
-    function hideBadges(doc) {
-        if (!doc || !doc.querySelectorAll) return;
-        try {
-            // 1. Streamlit.io links + parent container
-            doc.querySelectorAll('a[href*="streamlit.io"]').forEach(function(el) {
-                if (el.href && !el.href.includes('docs.streamlit.io')) {
-                    el.style.cssText = 'display:none !important;visibility:hidden !important';
-                    var p = el.parentElement;
-                    for (var i = 0; i < 5 && p && p.tagName !== 'BODY'; i++) {
-                        p.style.cssText = 'display:none !important;visibility:hidden !important';
-                        p = p.parentElement;
-                    }
+    function hideBadges() {
+        if (!doc.querySelectorAll) return;
+        // Chỉ target selector cụ thể (không scan toàn bộ div/span — quá tốn CPU)
+        var sels = [
+            '[class*="viewerBadge"]','[class*="ViewerBadge"]',
+            '[class*="profileContainer"]','[data-testid*="viewer"]',
+            '[data-testid*="manage-app"]','[data-testid="stToolbar"]',
+            '[data-testid="stDecoration"]','[data-testid="stAppDeployButton"]',
+            '[data-testid="stStatusWidget"]','.stDeployButton'
+        ];
+        sels.forEach(function(sel) {
+            doc.querySelectorAll(sel).forEach(function(el) {
+                if (!el._hidden) {
+                    el.style.setProperty('display', 'none', 'important');
+                    el._hidden = true;
                 }
             });
-
-            // 2. Text match — "Hosted with Streamlit", "Created by X", "Manage app"
-            doc.querySelectorAll('div, span, a, button').forEach(function(el) {
-                if (el._processed) return;
-                var txt = (el.textContent || '').trim();
-                if (txt.length > 60) return;
-                if (txt === 'Hosted with Streamlit' ||
-                    txt.startsWith('Created by ') ||
-                    txt === 'Manage app' ||
-                    txt === 'Fork this app' ||
-                    (txt === 'Streamlit' && el.closest && el.closest('[class*="adge"], [class*="ooter"]'))) {
-                    var p = el;
-                    for (var i = 0; i < 6 && p && p.tagName !== 'BODY'; i++) {
-                        p.style.cssText = 'display:none !important;visibility:hidden !important;height:0 !important';
-                        p._processed = true;
-                        if (p.parentElement && p.parentElement.children.length <= 4 && p.parentElement.tagName !== 'BODY') {
-                            p = p.parentElement;
-                        } else break;
-                    }
-                }
-            });
-
-            // 3. Viewer badge class patterns — catch-all wildcards
-            [
-                '[class*="viewerBadge"]','[class*="ViewerBadge"]',
-                '[class*="profileContainer"]','[class*="_profileContainer"]',
-                '[class*="profile_container"]','[data-testid*="viewer"]',
-                '[data-testid*="profile"]','[data-testid*="manage-app"]',
-                '[data-testid="stToolbar"]','[data-testid="stDecoration"]',
-                '[data-testid="stAppDeployButton"]','[data-testid="stStatusWidget"]',
-                '[data-testid="stHeader"]','.stDeployButton','.stAppDeployButton',
-                'button[kind="header"]','button[data-testid="baseButton-header"]','#MainMenu'
-            ].forEach(function(sel) {
-                doc.querySelectorAll(sel).forEach(function(el) {
-                    el.style.cssText = 'display:none !important;visibility:hidden !important;height:0 !important';
-                });
-            });
-
-            // 4. Fixed position elements ở góc phải dưới (thường là badges)
-            doc.querySelectorAll('div, span').forEach(function(el) {
-                if (el._checkedFixed) return;
-                el._checkedFixed = true;
-                try {
-                    var cs = doc.defaultView.getComputedStyle(el);
-                    if (cs.position === 'fixed' && cs.right !== 'auto' && cs.bottom !== 'auto') {
-                        var rect = el.getBoundingClientRect();
-                        if (rect.width < 300 && rect.height < 100 && rect.width > 10) {
-                            var html = (el.innerHTML || '').toLowerCase();
-                            if (html.includes('streamlit') || html.includes('created by')) {
-                                el.style.cssText = 'display:none !important';
-                            }
-                        }
-                    }
-                } catch(e) {}
-            });
-        } catch(e) {}
-    }
-
-    function tickAll() {
-        getTargetDocs().forEach(function(d) {
-            injectCSS(d);
-            hideBadges(d);
+        });
+        // Hide streamlit.io links (không phải docs)
+        doc.querySelectorAll('a[href*="streamlit.io"]').forEach(function(el) {
+            if (el._hidden) return;
+            if (!el.href.includes('docs.streamlit.io')) {
+                el.style.setProperty('display', 'none', 'important');
+                el._hidden = true;
+            }
         });
     }
 
-    // Initial burst
-    [0, 10, 50, 100, 200, 400, 800, 1500, 3000, 5000, 8000].forEach(function(ms) {
-        setTimeout(tickAll, ms);
-    });
+    // Initial burst — chỉ vài lần đầu, KHÔNG setInterval permanent
+    [50, 300, 1000, 3000].forEach(function(ms) { setTimeout(hideBadges, ms); });
 
-    // Persistent interval — 200ms vĩnh viễn (badge nào hiện lại là ẩn ngay)
-    setInterval(tickAll, 200);
-
-    // MutationObserver trên tất cả parent docs
-    getTargetDocs().forEach(function(d) {
-        try {
-            new MutationObserver(tickAll).observe(d.body || d.documentElement, {
-                childList: true, subtree: true, attributes: true,
-                attributeFilter: ['class','style']
-            });
-        } catch(e) {}
-    });
+    // MutationObserver — event-driven, chỉ fire khi DOM thay đổi (ít tốn CPU)
+    try {
+        var _deb;
+        new MutationObserver(function() {
+            clearTimeout(_deb);
+            _deb = setTimeout(hideBadges, 100);
+        }).observe(doc.body, { childList: true, subtree: true });
+    } catch(e) {}
 })();
 </script>
 """, height=0, scrolling=False)
