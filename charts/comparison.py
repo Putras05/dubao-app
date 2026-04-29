@@ -377,13 +377,11 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
     lang = st.session_state.get('lang', 'VI')
     label_all = 'Tất cả' if lang == 'VI' else 'All'
 
-    # 1. Giới hạn data theo timeframe — ít data = render mượt hơn
-    # 1D: 3 năm (~750 bars); 1W: 5 năm; 1M/3M: 5 năm
-    _years_keep = 3 if interval == '1D' else 5
-    if len(df) > 0:
-        _last_date = pd.to_datetime(df['Ngay'].iloc[-1])
-        _cutoff = _last_date - pd.Timedelta(days=_years_keep * 365)
-        df = df[pd.to_datetime(df['Ngay']) >= _cutoff].reset_index(drop=True)
+    # 1. Tôn trọng date range từ sidebar — df đã được filter qua fetch_data(
+    # ticker, date_from, date_to). KHÔNG override bằng cutoff nội bộ.
+    # User chọn Từ/Đến thì chart hiển thị đúng range đó. Default zoom theo
+    # interval ở bước 6 vẫn cho user view ngắn gọn ban đầu, rangeselector
+    # 1M/3M/6M/1N/Tất cả để pan ra full range.
 
     # 2. Resample theo timeframe
     df = _resample_ohlc(df, _TF_FREQ.get(interval))
