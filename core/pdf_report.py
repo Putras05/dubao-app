@@ -415,135 +415,132 @@ def _page_toc(pdf, ticker, lang='VI'):
 # ═══════════════════════════════════════════════════════════════
 # PAGE 3 — Historical price chart + forecast
 # ═══════════════════════════════════════════════════════════════
-def _page_chart(pdf, ticker, df, r1, r2, r3, ar_order, lang='VI'):
+def _page_chart(pdf, ticker, df, r1, r2, r3, m1, m2, m3, ar_order, lang='VI'):
+    """Trang chẩn đoán mô hình — 4 panel chuẩn forecasting research:
+       A. Test set: actual vs 3 dự báo
+       B. Bar metrics MAPE/RMSE/MAE × 3 model
+       C. ACF residuals model tốt nhất (Box-Jenkins white-noise check)
+       D. Chuỗi phần dư 3 model overlay
+    """
     fig = plt.figure(figsize=A4_PORTRAIT)
     fig.patch.set_facecolor('white')
     _add_header(fig, '', lang=lang)
 
     # Title
     fig.text(0.08, 0.905,
-             _L(f'BIỂU ĐỒ LỊCH SỬ GIÁ — {ticker}',
-                f'HISTORICAL PRICE CHART — {ticker}', lang),
+             _L(f'CHẨN ĐOÁN MÔ HÌNH DỰ BÁO — {ticker}',
+                f'FORECAST MODEL DIAGNOSTICS — {ticker}', lang),
              fontsize=14, color=_C_TEXT, weight='bold')
     fig.text(0.08, 0.885,
-             _L('120 phiên gần nhất + marker dự báo phiên kế tiếp của 3 mô hình',
-                'Latest 120 sessions + next-session forecast markers of 3 models',
+             _L('Actual vs Predicted · sai số · ACF phần dư · chuỗi phần dư',
+                'Actual vs predicted · errors · residual ACF · residual series',
                 lang),
              fontsize=9, color=_C_MUTED)
 
-    # Main chart: last 120 sessions
-    ax1 = fig.add_axes([0.08, 0.52, 0.84, 0.33])
-    n_show = min(120, len(df))
-    show_df = df.tail(n_show).reset_index(drop=True)
-    close_k = show_df['Close'].values
-
-    dates_idx = np.arange(len(show_df))
-    ax1.plot(dates_idx, close_k, color=_C_ACCENT, linewidth=1.6,
-             label=_L('Giá đóng cửa thực tế', 'Actual close price', lang),
-             zorder=2)
-    ax1.fill_between(dates_idx, close_k, close_k.min() * 0.98,
-                     alpha=0.08, color=_C_ACCENT, zorder=1)
-
-    # Mở rộng x-range có chỗ cho forecast lines extension (style như app)
-    x_max = len(show_df) + 8
-    ax1.set_xlim(-2, x_max)
-
-    # Last actual close point → nơi bắt đầu 3 đường dự báo
-    last_x = len(show_df) - 1
-    last_y = close_k[-1]
-    forecast_end_x = len(show_df) + 5
-
-    # 3 ĐƯỜNG extension từ last close → next_pred của 3 model
-    # Styles khác nhau: AR dashed, MLR dotted, CART dash-dot
-    models_forecast = [
-        (f'AR({ar_order})', _C_AR,   r1, (0, (4, 2)),    'o'),   # dashed
-        ('MLR',             _C_MLR,  r2, (0, (1, 1.5)),  's'),   # dotted
-        ('CART',            _C_CART, r3, (0, (4, 1, 1, 1)), '^'),# dash-dot
+    models = [
+        (f'AR({ar_order})', _C_AR,   r1, m1),
+        ('MLR',             _C_MLR,  r2, m2),
+        ('CART',            _C_CART, r3, m3),
     ]
-    for nm, clr, res, dash_style, marker in models_forecast:
-        pred_val = res['next_pred']
-        # Đường kéo từ last close đến forecast point
-        _pred_money = _L(f'{pred_val*1000:,.0f} đ',
-                         f'{pred_val*1000:,.0f} VND', lang)
-        ax1.plot([last_x, forecast_end_x], [last_y, pred_val],
-                  color=clr, linewidth=1.8, linestyle=dash_style,
-                  alpha=0.9, zorder=5,
-                  label=f'{nm}: {_pred_money}')
-        # Marker nhỏ ở cuối đường để xác định rõ endpoint
-        ax1.scatter([forecast_end_x], [pred_val],
-                    s=55, color=clr, edgecolor='white', linewidth=1.5,
-                    marker=marker, zorder=6)
+    dates_te = pd.to_datetime(r1['dates_te'])
 
-    # Vertical divider line tại điểm last_x (ranh giới history/forecast)
-    ax1.axvline(last_x, color=_C_MUTED, linestyle=':', linewidth=1.0,
-                alpha=0.5, zorder=3)
-
-    # Grid + labels
-    ax1.set_xlabel(_L('Phiên giao dịch (gần nhất)',
-                      'Trading session (most recent)', lang),
-                   fontsize=9, color=_C_MUTED)
-    ax1.set_ylabel(_L('Giá (nghìn đồng)', 'Price (k VND)', lang),
-                   fontsize=9, color=_C_MUTED)
-    ax1.grid(True, alpha=0.3, linestyle=':')
-    ax1.spines['top'].set_visible(False)
-    ax1.spines['right'].set_visible(False)
-    # Legend 4 entries (1 Close + 3 dự báo) — xếp 4 cột để không tốn chiều cao
-    ax1.legend(loc='lower left', fontsize=7.5, frameon=True,
+    # ── PANEL A — Actual vs 3 forecasts (top, full width) ─────────────────
+    axA = fig.add_axes([0.08, 0.55, 0.84, 0.30])
+    yte = np.asarray(r1['yte'], dtype=float)
+    axA.plot(dates_te, yte, color=_C_TEXT, linewidth=1.7,
+             label=_L('Thực tế', 'Actual', lang), zorder=5)
+    for nm, clr, res, m in models:
+        axA.plot(dates_te, np.asarray(res['pte'], dtype=float),
+                 color=clr, linewidth=1.0, alpha=0.85,
+                 label=f'{nm} (MAPE={m["MAPE"]:.2f}%)')
+    axA.set_title(_L('A. So sánh dự báo trên tập kiểm tra',
+                     'A. Forecast comparison on test set', lang),
+                  fontsize=10, weight='bold', color=_C_TEXT, loc='left', pad=4)
+    axA.set_ylabel(_L('Giá (nghìn đồng)', 'Price (k VND)', lang),
+                   fontsize=8, color=_C_MUTED)
+    axA.legend(loc='best', fontsize=7, frameon=True,
                facecolor='white', edgecolor=_C_BORDER, ncol=4,
-               handletextpad=0.5, columnspacing=1.2)
-    ax1.tick_params(labelsize=8, colors=_C_MUTED)
+               handletextpad=0.4, columnspacing=1.0)
+    axA.grid(True, alpha=0.3, linestyle=':')
+    axA.spines['top'].set_visible(False); axA.spines['right'].set_visible(False)
+    axA.tick_params(labelsize=7, colors=_C_MUTED)
+    import matplotlib.dates as _mdates
+    axA.xaxis.set_major_formatter(_mdates.DateFormatter('%m/%y'))
 
-    # ═══ Subchart: Return distribution (LEFT half) ═══
-    # Rút gọn title + giảm fontsize tránh overlap
-    fig.text(0.08, 0.455,
-             _L(f'PHÂN PHỐI RETURN — {ticker}',
-                f'RETURN DISTRIBUTION — {ticker}', lang),
-             fontsize=10, color=_C_TEXT, weight='bold')
+    # ── PANEL B — Bar metrics (mid-left, half width) ─────────────────────
+    axB = fig.add_axes([0.08, 0.31, 0.39, 0.16])
+    metric_keys = ['MAPE', 'RMSE', 'MAE']
+    x = np.arange(len(models))
+    bar_w = 0.26
+    for i, k in enumerate(metric_keys):
+        vals = [m.get(k, 0) for _, _, _, m in models]
+        axB.bar(x + (i - 1) * bar_w, vals, bar_w,
+                label=k, alpha=0.85)
+    axB.set_xticks(x)
+    axB.set_xticklabels([nm for nm, *_ in models], fontsize=7, color=_C_MUTED)
+    axB.set_title(_L('B. Chỉ số sai số', 'B. Error metrics', lang),
+                  fontsize=10, weight='bold', color=_C_TEXT, loc='left', pad=4)
+    axB.legend(fontsize=6.5, frameon=False, ncol=3,
+               loc='upper center', bbox_to_anchor=(0.5, -0.18))
+    axB.grid(True, alpha=0.3, linestyle=':', axis='y')
+    axB.spines['top'].set_visible(False); axB.spines['right'].set_visible(False)
+    axB.tick_params(labelsize=6.5, colors=_C_MUTED)
 
-    ax2 = fig.add_axes([0.08, 0.13, 0.39, 0.28])
-    if 'Return' in df.columns:
-        returns = df['Return'].dropna().values
-        ax2.hist(returns, bins=50, color=_C_ACCENT, alpha=0.7,
-                 edgecolor='white', linewidth=0.5)
-        ax2.axvline(0, color=_C_DANGER, linestyle='--', linewidth=1, alpha=0.6)
-        _mean_lbl = _L(f'TB = {returns.mean():.3f}%',
-                       f'Mean = {returns.mean():.3f}%', lang)
-        ax2.axvline(returns.mean(), color=_C_SUCCESS, linestyle='-',
-                    linewidth=1.5, label=_mean_lbl)
-        ax2.set_xlabel(_L('Return hàng ngày (%)', 'Daily return (%)', lang),
-                       fontsize=8, color=_C_MUTED)
-        ax2.set_ylabel(_L('Tần suất', 'Frequency', lang),
-                       fontsize=8, color=_C_MUTED)
-        ax2.legend(loc='upper right', fontsize=7, frameon=False)
-        ax2.grid(True, alpha=0.3, linestyle=':')
-        ax2.spines['top'].set_visible(False)
-        ax2.spines['right'].set_visible(False)
-        ax2.tick_params(labelsize=7, colors=_C_MUTED)
-
-    # ═══ Subchart: Volume 30 ngày (RIGHT half) ═══
-    fig.text(0.54, 0.455,
-             _L('KHỐI LƯỢNG 30 PHIÊN GẦN NHẤT',
-                'VOLUME — LATEST 30 SESSIONS', lang),
-             fontsize=10, color=_C_TEXT, weight='bold')
-
-    ax3 = fig.add_axes([0.54, 0.13, 0.38, 0.28])
-    if 'Volume' in df.columns:
-        vol = df['Volume'].tail(30).values
-        vol_x = np.arange(len(vol))
-        if 'Return' in df.columns:
-            ret30 = df['Return'].tail(30).values
-            ret_colors = [_C_SUCCESS if r >= 0 else _C_DANGER for r in ret30]
+    # ── PANEL C — ACF residuals best model (mid-right, half width) ───────
+    axC = fig.add_axes([0.54, 0.31, 0.38, 0.16])
+    _best = min(models, key=lambda x: x[3].get('MAPE', 1e9))
+    _best_name, _, _best_res, _ = _best
+    _best_resid = (np.asarray(_best_res['yte'], dtype=float)
+                   - np.asarray(_best_res['pte'], dtype=float))
+    n = len(_best_resid)
+    n_lags = min(20, max(5, n // 4))
+    acf_vals = [1.0]
+    for k in range(1, n_lags + 1):
+        if n - k < 2:
+            acf_vals.append(0.0)
         else:
-            ret_colors = [_C_ACCENT] * len(vol)
-        ax3.bar(vol_x, vol / 1e6, color=ret_colors, alpha=0.75, edgecolor='none')
-        ax3.set_xlabel(_L('30 phiên gần nhất', 'Latest 30 sessions', lang),
-                       fontsize=8, color=_C_MUTED)
-        ax3.set_ylabel(_L('Khối lượng (triệu CP)', 'Volume (million shares)', lang),
-                       fontsize=8, color=_C_MUTED)
-        ax3.grid(True, alpha=0.3, linestyle=':', axis='y')
-        ax3.spines['top'].set_visible(False)
-        ax3.spines['right'].set_visible(False)
-        ax3.tick_params(labelsize=7, colors=_C_MUTED)
+            seg1 = _best_resid[:-k]; seg2 = _best_resid[k:]
+            sd1 = np.std(seg1); sd2 = np.std(seg2)
+            if sd1 > 0 and sd2 > 0:
+                acf_vals.append(float(np.corrcoef(seg1, seg2)[0, 1]))
+            else:
+                acf_vals.append(0.0)
+    ci_band = 1.96 / np.sqrt(n) if n > 0 else 0
+    lags_x = np.arange(n_lags + 1)
+    axC.vlines(lags_x, 0, acf_vals, color=_C_ACCENT, linewidth=1.8)
+    axC.scatter(lags_x, acf_vals, s=14, color=_C_ACCENT, zorder=3)
+    axC.axhline(ci_band,  ls='--', color=_C_DANGER, linewidth=0.8, alpha=0.7)
+    axC.axhline(-ci_band, ls='--', color=_C_DANGER, linewidth=0.8, alpha=0.7)
+    axC.axhline(0, color=_C_TEXT, linewidth=0.6)
+    axC.set_title(
+        _L(f'C. ACF phần dư — {_best_name} (model tốt nhất)',
+           f'C. Residual ACF — {_best_name} (best model)', lang),
+        fontsize=10, weight='bold', color=_C_TEXT, loc='left', pad=4)
+    axC.set_xlabel(_L('Bậc trễ', 'Lag', lang), fontsize=7, color=_C_MUTED)
+    axC.set_ylabel('ACF', fontsize=7, color=_C_MUTED)
+    axC.grid(True, alpha=0.3, linestyle=':')
+    axC.spines['top'].set_visible(False); axC.spines['right'].set_visible(False)
+    axC.tick_params(labelsize=6.5, colors=_C_MUTED)
+
+    # ── PANEL D — Residual time series 3 models (bottom, full width) ─────
+    axD = fig.add_axes([0.08, 0.10, 0.84, 0.13])
+    for nm, clr, res, _ in models:
+        residuals = (np.asarray(res['yte'], dtype=float)
+                     - np.asarray(res['pte'], dtype=float))
+        axD.plot(dates_te, residuals, color=clr, linewidth=0.9,
+                 alpha=0.75, label=nm)
+    axD.axhline(0, color=_C_TEXT, linewidth=0.6)
+    axD.set_title(
+        _L('D. Chuỗi phần dư theo thời gian (yt − ŷt)',
+           'D. Residual time series (yt − ŷt)', lang),
+        fontsize=10, weight='bold', color=_C_TEXT, loc='left', pad=4)
+    axD.set_ylabel(_L('Phần dư (nghìn đ)', 'Residual (k VND)', lang),
+                   fontsize=7, color=_C_MUTED)
+    axD.legend(loc='upper right', fontsize=6.5, frameon=False, ncol=3)
+    axD.grid(True, alpha=0.3, linestyle=':')
+    axD.spines['top'].set_visible(False); axD.spines['right'].set_visible(False)
+    axD.tick_params(labelsize=6.5, colors=_C_MUTED)
+    axD.xaxis.set_major_formatter(_mdates.DateFormatter('%m/%y'))
 
     _add_footer(fig, 3, TOTAL_PAGES)
     pdf.savefig(fig, facecolor='white')
@@ -1901,7 +1898,7 @@ def generate_pdf_report(ticker: str, df, r1, r2, r3, m1, m2, m3,
 
         _page_cover(pdf, ticker, df, r1, r2, r3, m1, m2, m3, ar_order, lang=lang)
         _page_toc(pdf, ticker, lang=lang)
-        _page_chart(pdf, ticker, df, r1, r2, r3, ar_order, lang=lang)
+        _page_chart(pdf, ticker, df, r1, r2, r3, m1, m2, m3, ar_order, lang=lang)
         _page_test_timeseries(pdf, ticker, r1, r2, r3, ar_order, lang=lang)
         _page_scatter_coef(pdf, ticker, r1, r2, r3, m1, m2, m3, ar_order, lang=lang)
         _page_cart_features(pdf, ticker, r3, m3, ar_order, lang=lang)
