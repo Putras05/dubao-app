@@ -230,13 +230,11 @@ def inject_theme_js(T: dict) -> None:
     [50, 150, 400, 900, 2000].forEach(function(ms) {{ setTimeout(applyAll, ms); }});
     [100, 300, 700, 1500].forEach(function(ms) {{ setTimeout(fixSidebarWidgets, ms); }});
 
-    // Debounce 350ms (was 80ms) — Plotly mutations rất nhiều khi pan/zoom,
-    // 80ms khiến cả applyAll() chạy liên tục gây jank chart.
-    var _debounce;
-    new MutationObserver(function() {{
-        clearTimeout(_debounce);
-        _debounce = setTimeout(applyAll, 350);
-    }}).observe(doc.body, {{ childList: true, subtree: true }});
+    // Bỏ MutationObserver — initial burst (5 setTimeout tới 2s) đủ phủ
+    // late-rendering widgets. Hover handlers idempotent qua flag _evt/_dlEvt
+    // nên widget mới sau 2s vẫn được style ở rerun kế tiếp. Observer chạy
+    // permanent gây jank rất nặng khi Plotly pan/zoom (mỗi mouse move = N
+    // mutations → applyAll() iterate ~10 selectors × hundreds nodes).
 }})();
 </script>
 """, height=0, scrolling=False)
@@ -305,17 +303,11 @@ def hide_streamlit_badges_js() -> None:
         });
     }
 
-    // Initial burst — chỉ vài lần đầu, KHÔNG setInterval permanent
+    // Initial burst — chỉ vài lần đầu. CSS đã inject vào parent <head> ở
+    // line trên rồi nên badge sẽ luôn ẩn (DOM mới cũng không tạo lại được
+    // vì CSS rule `display:none` global). Bỏ MutationObserver — tránh fire
+    // mỗi Plotly DOM mutation gây jank chart.
     [50, 300, 1000, 3000].forEach(function(ms) { setTimeout(hideBadges, ms); });
-
-    // MutationObserver — event-driven, chỉ fire khi DOM thay đổi (ít tốn CPU)
-    try {
-        var _deb;
-        new MutationObserver(function() {
-            clearTimeout(_deb);
-            _deb = setTimeout(hideBadges, 100);
-        }).observe(doc.body, { childList: true, subtree: true });
-    } catch(e) {}
 })();
 </script>
 """, height=0, scrolling=False)

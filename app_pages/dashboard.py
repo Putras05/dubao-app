@@ -16,11 +16,16 @@ from data.ichimoku import (
 
 @st.cache_data(show_spinner=False, hash_funcs={pd.DataFrame: _df_fingerprint})
 def _ichi_dashboard_summary(df: pd.DataFrame) -> tuple:
-    """Tính toán Ichimoku card data 1 lần — cache theo (last_date, len, last_close).
+    """Tính toán Ichimoku card data 1 lần — cache theo df fingerprint.
 
     Returns: (ov_code, ov_label, score, prim, trd, chk, fut,
               close_now, c26, fa, fb)
     """
+    if len(df) == 0:
+        nan = float('nan')
+        return ('na', 'Không đủ dữ liệu', 0,
+                'na', 'hold', 'na', 'na',
+                nan, nan, nan, nan)
     _df_ichi = add_ichimoku(df)
     _ichi_last = _df_ichi.iloc[-1]
     _close_now = float(_ichi_last['Close'])
@@ -154,8 +159,7 @@ def render(ticker, train_ratio, date_from, date_to, df, r1, r2, r3, m1, m2, m3, 
      _close_now, _c26, _fa, _fb) = _ichi_dashboard_summary(df)
 
     # Share Ichimoku summary sang chatbot qua session_state để AI trả lời đúng
-    import streamlit as _st_ref
-    _st_ref.session_state['ichimoku_summary'] = {
+    st.session_state['ichimoku_summary'] = {
         'label':        _ov_label,
         'code':         _ov_code,
         'score':        int(_score),

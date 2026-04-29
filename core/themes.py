@@ -84,11 +84,22 @@ THEMES = {
 }
 
 
+_THEME_CACHE: dict = {}
+
+
 def theme() -> dict:
+    """Trả theme dict — cùng id() giữa các rerun để @st.cache_data hash stable.
+
+    `THEMES[mode].copy()` trước đây trả NEW dict mỗi lần gọi → mọi
+    `@st.cache_data` nhận T làm arg đều miss cache mỗi rerun. Cache theo mode
+    để giữ same object ref.
+    """
     mode = st.session_state.get('theme_mode', 'light')
-    t = THEMES[mode].copy()
-    t['is_dark'] = (mode == 'dark')
-    return t
+    if mode not in _THEME_CACHE:
+        d = THEMES[mode].copy()
+        d['is_dark'] = (mode == 'dark')
+        _THEME_CACHE[mode] = d
+    return _THEME_CACHE[mode]
 
 
 def lighten_color(hex_color: str, amount: float = 0.3) -> str:

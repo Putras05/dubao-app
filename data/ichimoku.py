@@ -50,13 +50,22 @@ DISPLACE  = 26
 
 
 def _df_fingerprint(df: pd.DataFrame) -> tuple:
-    """Hash O(1) cho DataFrame OHLC: chỉ dùng (last_date, len, last_close)."""
+    """Hash O(1) cho DataFrame OHLC: (first_date, last_date, len, last_close).
+
+    Thêm first_date phòng khi user kéo date_from về xa hơn nhưng len trùng cờ
+    với 1 fingerprint cũ (collision rất hiếm nhưng có thể trả wrong cache).
+    """
     if len(df) == 0:
-        return ('empty', 0, 0.0)
+        return ('empty', 'empty', 0, 0.0)
     try:
-        return (str(df['Ngay'].iloc[-1]), int(len(df)), float(df['Close'].iloc[-1]))
+        return (
+            str(df['Ngay'].iloc[0]),
+            str(df['Ngay'].iloc[-1]),
+            int(len(df)),
+            float(df['Close'].iloc[-1]),
+        )
     except Exception:
-        return (id(df), int(len(df)), 0.0)
+        return (id(df), id(df), int(len(df)), 0.0)
 
 
 def _donchian_mid(high: pd.Series, low: pd.Series, n: int) -> pd.Series:
