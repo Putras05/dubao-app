@@ -18,7 +18,8 @@ from data.ichimoku import (
 def _ichi_dashboard_summary(df: pd.DataFrame) -> tuple:
     """Tính toán Ichimoku card data 1 lần — cache theo (last_date, len, last_close).
 
-    Returns: (ov_code, ov_label, score, prim, trd, chk, fut)
+    Returns: (ov_code, ov_label, score, prim, trd, chk, fut,
+              close_now, c26, fa, fb)
     """
     _df_ichi = add_ichimoku(df)
     _ichi_last = _df_ichi.iloc[-1]
@@ -40,7 +41,9 @@ def _ichi_dashboard_summary(df: pd.DataFrame) -> tuple:
 
     _ov_code, _ov_label, _score = aggregate_signals(
         _prim_code, _trd_code, _chk_code, _fut_code)
-    return (_ov_code, _ov_label, _score, _prim_code, _trd_code, _chk_code, _fut_code)
+    return (_ov_code, _ov_label, _score,
+            _prim_code, _trd_code, _chk_code, _fut_code,
+            _close_now, _c26, _fa, _fb)
 from ui.components import (
     sparkline_svg, render_ai_insight,
     render_param_timeline, render_param_badge,
@@ -147,7 +150,8 @@ def render(ticker, train_ratio, date_from, date_to, df, r1, r2, r3, m1, m2, m3, 
 
     # ── Ichimoku summary CACHED — tránh recompute mỗi rerun ──────────────
     (_ov_code, _ov_label, _score,
-     _prim_code, _trd_code, _chk_code, _fut_code) = _ichi_dashboard_summary(df)
+     _prim_code, _trd_code, _chk_code, _fut_code,
+     _close_now, _c26, _fa, _fb) = _ichi_dashboard_summary(df)
 
     # Share Ichimoku summary sang chatbot qua session_state để AI trả lời đúng
     import streamlit as _st_ref
