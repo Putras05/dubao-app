@@ -26,6 +26,27 @@ from core import chatbot_cache as cache
 
 
 # ═══════════════════════════════════════════════════════════════
+# TICKER DETECTION — bot tự nhận diện mã trong câu hỏi user
+# ═══════════════════════════════════════════════════════════════
+def _detect_ticker_in_query(query: str, current_ticker: str) -> str | None:
+    """Trả ticker user mention trong query nếu KHÁC ticker hiện tại, else None.
+
+    Match standalone token (word boundary) để tránh match nhầm. Hỗ trợ
+    nguyên ticker name + 1 vài cách viết phổ biến.
+    """
+    if not query:
+        return None
+    import re
+    q_upper = query.upper()
+    for tk in ('FPT', 'HPG', 'VNM'):
+        if tk == (current_ticker or '').upper():
+            continue
+        if re.search(rf'\b{tk}\b', q_upper):
+            return tk
+    return None
+
+
+# ═══════════════════════════════════════════════════════════════
 # CONTEXT BUILDER  (FIXED — đơn vị giá đúng, nhãn vol rõ ràng)
 # ═══════════════════════════════════════════════════════════════
 def _build_context(ticker, r1, r2, r3, m1, m2, m3, df, ar_order):
@@ -2343,8 +2364,39 @@ html body [data-testid="stSidebar"] [data-testid="stTextInput"] input::-webkit-i
             if not _skip_add_user:
                 ch.add_message(active_id, 'user', _query)
 
+            # Auto-detect ticker user gõ — nếu khác ticker sidebar, build
+            # context cho ticker đó để bot trả lời chính xác về mã user hỏi
+            _q_ticker = _detect_ticker_in_query(_query, ticker)
+            _runtime_ctx, _runtime_ticker, _runtime_df = _context, ticker, df
+            if _q_ticker:
+                try:
+                    from data.fetcher import fetch_data
+                    from models.ar   import run_ar
+                    from models.mlr  import run_mlr
+                    from models.cart import run_cart
+                    from data.metrics import calc_metrics
+                    _alt_df  = fetch_data(_q_ticker, date_from, date_to)
+                    _alt_r1  = run_ar  (_q_ticker, train_ratio, p=ar_order)
+                    _alt_r2  = run_mlr (_q_ticker, train_ratio, p=ar_order)
+                    _alt_r3  = run_cart(_q_ticker, train_ratio, p=ar_order)
+                    _alt_m1  = calc_metrics(_alt_r1['yte'], _alt_r1['pte'],
+                                            k=ar_order)
+                    _alt_m2  = calc_metrics(_alt_r2['yte'], _alt_r2['pte'],
+                                            k=3 * ar_order)
+                    _alt_m3  = calc_metrics(_alt_r3['yte'], _alt_r3['pte'],
+                                            k=6 * ar_order)
+                    _runtime_ctx = _build_context(
+                        _q_ticker, _alt_r1, _alt_r2, _alt_r3,
+                        _alt_m1, _alt_m2, _alt_m3, _alt_df, ar_order,
+                    )
+                    _runtime_ticker = _q_ticker
+                    _runtime_df = _alt_df
+                except Exception as _alt_err:
+                    _log(f'[Chatbot] ticker switch failed: {_alt_err}')
+
             response, diagram_html = _process_query(
-                _query, _context, ar_order, ticker, df, _lang, _ai_ok,
+                _query, _runtime_ctx, ar_order,
+                _runtime_ticker, _runtime_df, _lang, _ai_ok,
             )
 
             nav_target = _detect_navigation_intent(_query)
