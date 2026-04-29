@@ -347,12 +347,17 @@ def _resample_ohlc(df: pd.DataFrame, freq: str | None) -> pd.DataFrame:
 
 
 def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
-                            interval: str = '1D') -> go.Figure:
-    """Candlestick chart kiểu TradingView — timeframe 1D/1W/1M/3M + SMA 5/20.
+                            interval: str = '1D',
+                            show_ichimoku: bool = False) -> go.Figure:
+    """Candlestick chart TradingView-style — multi-TF + SMA + Volume + Ichimoku.
 
-    Giới hạn 5 năm để render mượt. Resample từ daily nếu interval != 1D,
-    SMA tính lại trên data đã resample (đúng nghĩa cho mỗi khung).
+    Layout: 2 hàng share x-axis. Row 1 (75%) = nến + SMA + Ichimoku.
+    Row 2 (25%) = volume bars (xanh/đỏ theo direction). KHÔNG dùng rangeslider
+    nữa — thay bằng volume subplot. Pan/zoom qua scroll wheel + rangeselector.
     """
+    from plotly.subplots import make_subplots
+    from data.ichimoku import add_ichimoku
+
     lang = st.session_state.get('lang', 'VI')
     label_all = 'Tất cả' if lang == 'VI' else 'All'
 
@@ -370,14 +375,34 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
         df['SMA5']  = df['Close'].rolling(5,  min_periods=5).mean()
         df['SMA20'] = df['Close'].rolling(20, min_periods=20).mean()
 
+    # 4. Ichimoku (nếu bật) — yêu cầu đủ 52+26=78 bars cho cloud đầy đủ
+    if show_ichimoku and len(df) > 30:
+        try:
+            df = add_ichimoku(df)
+        except Exception:
+            pass
+
     dates = pd.to_datetime(df['Ngay'])
     inc_color = '#10B981'
     dec_color = '#EF4444'
     sma5_color  = '#F59E0B'
     sma20_color = '#8B5CF6'
 
-    fig = go.Figure()
+    # Volume colors theo direction từng nến
+    if len(df) > 0:
+        _vol_colors = [inc_color if c >= o else dec_color
+                       for c, o in zip(df['Close'].values, df['Open'].values)]
+    else:
+        _vol_colors = []
 
+    # 5. Build subplots — row 1 (75%) cho nến + SMA + Ichimoku, row 2 (25%) cho Volume
+    fig = make_subplots(
+        rows=2, cols=1, shared_xaxes=True,
+        row_heights=[0.75, 0.25],
+        vertical_spacing=0.03,
+    )
+
+    # ── Row 1: Candlestick ───────────────────────────────────────────────
     fig.add_trace(go.Candlestick(
         x=dates,
         open=df['Open'].values,
@@ -388,21 +413,66 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
         decreasing=dict(line=dict(color=dec_color, width=1), fillcolor=dec_color),
         name=ticker,
         showlegend=False,
-    ))
+    ), row=1, col=1)
 
+    # ── Row 1: Ichimoku Cloud (vẽ TRƯỚC SMA để cloud nằm dưới) ──────────
+    if show_ichimoku and 'Tenkan' in df.columns:
+        # Senkou A (line ranh giới trên/dưới mây) + B (fill thành mây)
+        fig.add_trace(go.Scatter(
+            x=dates, y=df['Senkou_A'].values, mode='lines', name='Senkou A',
+            line=dict(color='rgba(16,185,129,0.45)', width=1),
+            legendgroup='ichimoku',
+            hovertemplate='Senkou A: %{y:,.2f}<extra></extra>',
+        ), row=1, col=1)
+        fig.add_trace(go.Scatter(
+            x=dates, y=df['Senkou_B'].values, mode='lines', name='Senkou B',
+            line=dict(color='rgba(239,68,68,0.45)', width=1),
+            fill='tonexty', fillcolor='rgba(124,131,201,0.10)',
+            legendgroup='ichimoku',
+            hovertemplate='Senkou B: %{y:,.2f}<extra></extra>',
+        ), row=1, col=1)
+        fig.add_trace(go.Scatter(
+            x=dates, y=df['Tenkan'].values, mode='lines', name='Tenkan',
+            line=dict(color='#EF4444', width=1.2),
+            legendgroup='ichimoku',
+            hovertemplate='Tenkan: %{y:,.2f}<extra></extra>',
+        ), row=1, col=1)
+        fig.add_trace(go.Scatter(
+            x=dates, y=df['Kijun'].values, mode='lines', name='Kijun',
+            line=dict(color='#3B82F6', width=1.2),
+            legendgroup='ichimoku',
+            hovertemplate='Kijun: %{y:,.2f}<extra></extra>',
+        ), row=1, col=1)
+        fig.add_trace(go.Scatter(
+            x=dates, y=df['Chikou'].values, mode='lines', name='Chikou',
+            line=dict(color='#A855F7', width=1, dash='dot'),
+            legendgroup='ichimoku',
+            hovertemplate='Chikou: %{y:,.2f}<extra></extra>',
+        ), row=1, col=1)
+
+    # ── Row 1: SMA overlays ─────────────────────────────────────────────
     if len(df) > 0:
         fig.add_trace(go.Scatter(
             x=dates, y=df['SMA5'].values, mode='lines', name='SMA 5',
             line=dict(color=sma5_color, width=1.3),
             hovertemplate='SMA 5: %{y:,.2f}<extra></extra>',
-        ))
+        ), row=1, col=1)
         fig.add_trace(go.Scatter(
             x=dates, y=df['SMA20'].values, mode='lines', name='SMA 20',
             line=dict(color=sma20_color, width=1.3),
             hovertemplate='SMA 20: %{y:,.2f}<extra></extra>',
-        ))
+        ), row=1, col=1)
 
-    # 4. Default zoom theo interval
+    # ── Row 2: Volume bars ──────────────────────────────────────────────
+    if len(df) > 0 and 'Volume' in df.columns:
+        fig.add_trace(go.Bar(
+            x=dates, y=df['Volume'].values,
+            marker=dict(color=_vol_colors, line=dict(width=0)),
+            name='Volume', showlegend=False,
+            hovertemplate='Vol: %{y:,.0f}<extra></extra>',
+        ), row=2, col=1)
+
+    # 6. Default zoom theo interval (chỉ áp cho row 1; row 2 share)
     if len(dates) > 0:
         _last = dates.iloc[-1]
         _days = _TF_DEFAULT_DAYS.get(interval, 30)
@@ -410,11 +480,11 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
     else:
         _xaxis_range = None
 
-    # 5. Rangebreaks chỉ áp dụng cho 1D (weekly/monthly đã agg, không có gap)
+    # 7. Rangebreaks chỉ áp dụng cho 1D
     _rangebreaks = [dict(bounds=['sat', 'mon'])] if interval == '1D' else None
 
     fig.update_layout(
-        height=520,
+        height=600,
         margin=dict(l=50, r=30, t=50, b=30),
         paper_bgcolor=T['bg_chart'],
         plot_bgcolor=T['bg_chart'],
@@ -430,52 +500,74 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
             xanchor='right', x=1.0,
             bgcolor='rgba(0,0,0,0)',
             font=dict(size=11, color=T['text_primary']),
+            groupclick='togglegroup',
         ),
         uirevision=f'cs_{ticker}_{interval}',
-        xaxis=dict(
-            range=_xaxis_range,
-            type='date',
-            showgrid=False, zeroline=False,
-            showline=True, linecolor=T['border'], linewidth=1,
-            ticks='outside', tickcolor=T['border'], ticklen=4,
-            tickformat='%d/%m/%Y',
-            tickfont=dict(size=10, color=T['text_muted']),
-            showspikes=True, spikecolor=T['accent'], spikemode='across',
-            spikesnap='cursor', spikedash='dot', spikethickness=1,
-            rangeselector=dict(
-                buttons=[
-                    dict(count=1, label='1M', step='month', stepmode='backward'),
-                    dict(count=3, label='3M', step='month', stepmode='backward'),
-                    dict(count=6, label='6M', step='month', stepmode='backward'),
-                    dict(count=1, label='1N', step='year',  stepmode='backward'),
-                    dict(step='all', label=label_all),
-                ],
-                bgcolor=T['bg_card'],
-                activecolor=T['accent'],
-                bordercolor=T['border'],
-                borderwidth=1,
-                font=dict(color=T['text_primary'], size=11),
-                x=0, y=1.10, yanchor='bottom',
-            ),
-            rangeslider=dict(
-                visible=True,
-                bgcolor=T['bg_card'],
-                bordercolor=T['border'],
-                borderwidth=1,
-                thickness=0.04,
-            ),
-            **({'rangebreaks': _rangebreaks} if _rangebreaks else {}),
-        ),
-        yaxis=dict(
-            showgrid=True, gridcolor=T['grid'], gridwidth=1,
-            zeroline=False, showline=False, ticks='',
-            tickformat=',.1f',
-            tickfont=dict(size=10, color=T['text_muted']),
-            title=None,
-            showspikes=True, spikecolor=T['accent'], spikemode='across',
-            spikesnap='cursor', spikedash='dot', spikethickness=1,
-        ),
+        bargap=0.15,
     )
+
+    # X-axis chính (row 2, vì shared) — rangeselector đặt trên row 1
+    fig.update_xaxes(
+        range=_xaxis_range,
+        type='date',
+        showgrid=False, zeroline=False,
+        showline=True, linecolor=T['border'], linewidth=1,
+        ticks='outside', tickcolor=T['border'], ticklen=4,
+        tickformat='%d/%m/%Y',
+        tickfont=dict(size=10, color=T['text_muted']),
+        showspikes=True, spikecolor=T['accent'], spikemode='across',
+        spikesnap='cursor', spikedash='dot', spikethickness=1,
+        **({'rangebreaks': _rangebreaks} if _rangebreaks else {}),
+        row=2, col=1,
+    )
+    # X-axis row 1: gắn rangeselector
+    fig.update_xaxes(
+        type='date',
+        showgrid=False, zeroline=False,
+        showline=True, linecolor=T['border'], linewidth=1,
+        showspikes=True, spikecolor=T['accent'], spikemode='across',
+        spikesnap='cursor', spikedash='dot', spikethickness=1,
+        rangeselector=dict(
+            buttons=[
+                dict(count=1, label='1M', step='month', stepmode='backward'),
+                dict(count=3, label='3M', step='month', stepmode='backward'),
+                dict(count=6, label='6M', step='month', stepmode='backward'),
+                dict(count=1, label='1N', step='year',  stepmode='backward'),
+                dict(step='all', label=label_all),
+            ],
+            bgcolor=T['bg_card'],
+            activecolor=T['accent'],
+            bordercolor=T['border'],
+            borderwidth=1,
+            font=dict(color=T['text_primary'], size=11),
+            x=0, y=1.10, yanchor='bottom',
+        ),
+        rangeslider=dict(visible=False),  # tắt rangeslider, thay bằng volume
+        **({'rangebreaks': _rangebreaks} if _rangebreaks else {}),
+        row=1, col=1,
+    )
+
+    # Y-axis row 1 (price)
+    fig.update_yaxes(
+        showgrid=True, gridcolor=T['grid'], gridwidth=1,
+        zeroline=False, showline=False, ticks='',
+        tickformat=',.1f',
+        tickfont=dict(size=10, color=T['text_muted']),
+        title=None,
+        showspikes=True, spikecolor=T['accent'], spikemode='across',
+        spikesnap='cursor', spikedash='dot', spikethickness=1,
+        row=1, col=1,
+    )
+    # Y-axis row 2 (volume) — compact
+    fig.update_yaxes(
+        showgrid=True, gridcolor=T['grid'], gridwidth=1,
+        zeroline=False, showline=False, ticks='',
+        tickformat='.2s',  # 1.2k, 3.4M
+        tickfont=dict(size=9, color=T['text_muted']),
+        title=dict(text='Volume', font=dict(size=10, color=T['text_muted']), standoff=8),
+        row=2, col=1,
+    )
+
     return fig
 
 

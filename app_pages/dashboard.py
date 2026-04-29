@@ -398,18 +398,37 @@ def render(ticker, train_ratio, date_from, date_to, df, r1, r2, r3, m1, m2, m3, 
     st.markdown(f'<div class="sec-hdr">{t("dash.comparison")}</div>', unsafe_allow_html=True)
     _is_en_cmp = st.session_state.get('lang', 'VI') == 'EN'
 
-    # Timeframe selector (1D / 1W / 1M / 3M)
-    _tf_label = 'Khung thời gian' if not _is_en_cmp else 'Timeframe'
-    _tf_options = ['1D', '1W', '1M', '3M']
-    _selected_tf = st.segmented_control(
-        _tf_label,
-        options=_tf_options,
-        default='1D',
-        key=f'cs_tf_{ticker}',
-        label_visibility='collapsed',
-    )
+    # Timeframe selector (1D / 1W / 1M / 3M) + Ichimoku toggle
+    _tf_col, _ichi_col = st.columns([3, 1])
+    with _tf_col:
+        _tf_label = 'Khung thời gian' if not _is_en_cmp else 'Timeframe'
+        _tf_options = ['1D', '1W', '1M', '3M']
+        _selected_tf = st.segmented_control(
+            _tf_label,
+            options=_tf_options,
+            default='1D',
+            key=f'cs_tf_{ticker}',
+            label_visibility='collapsed',
+        )
+    with _ichi_col:
+        _show_ichimoku = st.toggle(
+            'Ichimoku',
+            value=False,
+            key=f'cs_ichi_{ticker}',
+            help=('Hiển thị Tenkan, Kijun, Mây Kumo, Chikou (cần ≥30 phiên)'
+                  if not _is_en_cmp else
+                  'Show Tenkan, Kijun, Kumo cloud, Chikou (needs ≥30 bars)'),
+        )
     if _selected_tf is None:
         _selected_tf = '1D'
+
+    # Cảnh báo nếu Ichimoku bật mà timeframe có ít data (3M = ~20 quarters)
+    if _show_ichimoku and _selected_tf == '3M':
+        st.caption(
+            'ℹ️ Khung 3M có ≤20 phiên — Ichimoku chỉ hiển thị một phần.'
+            if not _is_en_cmp else
+            'ℹ️ 3M timeframe has ≤20 bars — Ichimoku will be partial.'
+        )
 
     _cmp_hint = (
         'Đơn vị giá: <b>nghìn đ</b> · Chọn khung thời gian <b>1D/1W/1M/3M</b> · '
@@ -438,7 +457,11 @@ def render(ticker, train_ratio, date_from, date_to, df, r1, r2, r3, m1, m2, m3, 
         st.markdown(_info_bar, unsafe_allow_html=True)
 
     try:
-        fig_cmp = chart_price_candlestick(df, ticker, _T, interval=_selected_tf)
+        fig_cmp = chart_price_candlestick(
+            df, ticker, _T,
+            interval=_selected_tf,
+            show_ichimoku=_show_ichimoku,
+        )
         # Candlestick: bật scroll wheel zoom + double-click reset (UX TradingView)
         _candle_config = {
             **_PLOTLY_CONFIG,
