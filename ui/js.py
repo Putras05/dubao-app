@@ -230,10 +230,12 @@ def inject_theme_js(T: dict) -> None:
     [50, 150, 400, 900, 2000].forEach(function(ms) {{ setTimeout(applyAll, ms); }});
     [100, 300, 700, 1500].forEach(function(ms) {{ setTimeout(fixSidebarWidgets, ms); }});
 
+    // Debounce 350ms (was 80ms) — Plotly mutations rất nhiều khi pan/zoom,
+    // 80ms khiến cả applyAll() chạy liên tục gây jank chart.
     var _debounce;
     new MutationObserver(function() {{
         clearTimeout(_debounce);
-        _debounce = setTimeout(applyAll, 80);
+        _debounce = setTimeout(applyAll, 350);
     }}).observe(doc.body, {{ childList: true, subtree: true }});
 }})();
 </script>
@@ -349,7 +351,8 @@ def force_sidebar_open_js() -> None:
         });
     }
     [50, 200, 500, 1200, 2500].forEach(function(ms) { setTimeout(forceSidebarOpen, ms); });
-    new MutationObserver(forceSidebarOpen).observe(doc.body, {childList:true, subtree:true});
+    // Bỏ MutationObserver — initial burst đủ, observer chạy mỗi Plotly DOM
+    // mutation gây jank rất nặng khi tương tác chart.
 })();
 </script>
 """, height=0, scrolling=False)

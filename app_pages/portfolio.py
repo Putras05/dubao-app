@@ -16,24 +16,34 @@ from charts.portfolio import chart_portfolio_compare_plotly, chart_correlation_p
 from charts.base import _PLOTLY_CONFIG
 
 
+def _build_ticker_bundle(tk, train_ratio, p):
+    d      = fetch_data(tk)
+    ar_r   = run_ar  (tk, train_ratio, p=p)
+    mlr_r  = run_mlr (tk, train_ratio, p=p)
+    cart_r = run_cart(tk, train_ratio, p=p)
+    return tk, {
+        'data':   d,
+        'ar':     ar_r,
+        'mlr':    mlr_r,
+        'cart':   cart_r,
+        'm_ar':   calc_metrics(ar_r['yte'],   ar_r['pte'],   k=p),
+        'm_mlr':  calc_metrics(mlr_r['yte'],  mlr_r['pte'],  k=3 * p),
+        'm_cart': calc_metrics(cart_r['yte'], cart_r['pte'], k=6 * p),
+    }
+
+
 @st.cache_data(show_spinner=False, ttl=1800)
 def _load_portfolio_models(train_ratio, p):
-    """Cache 3 tickers × 3 models — chỉ train khi (train_ratio, p) đổi."""
+    """Cache 3 tickers × 3 models — train song song qua ThreadPoolExecutor.
+    `run_*` đã `@st.cache_data` nên thread-safe."""
+    from concurrent.futures import ThreadPoolExecutor
     result = {}
-    for tk in TICKERS:
-        d      = fetch_data(tk)
-        ar_r   = run_ar  (tk, train_ratio, p=p)
-        mlr_r  = run_mlr (tk, train_ratio, p=p)
-        cart_r = run_cart(tk, train_ratio, p=p)
-        result[tk] = {
-            'data':   d,
-            'ar':     ar_r,
-            'mlr':    mlr_r,
-            'cart':   cart_r,
-            'm_ar':   calc_metrics(ar_r['yte'],   ar_r['pte'],   k=p),
-            'm_mlr':  calc_metrics(mlr_r['yte'],  mlr_r['pte'],  k=3 * p),
-            'm_cart': calc_metrics(cart_r['yte'], cart_r['pte'], k=6 * p),
-        }
+    with ThreadPoolExecutor(max_workers=3) as ex:
+        futures = [ex.submit(_build_ticker_bundle, tk, train_ratio, p)
+                   for tk in TICKERS]
+        for fut in futures:
+            tk, bundle = fut.result()
+            result[tk] = bundle
     return result
 
 

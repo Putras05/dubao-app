@@ -70,10 +70,10 @@ def run_cart(ticker: str, train_ratio: float, p: int = 1,
 
     gs = GridSearchCV(
         DecisionTreeRegressor(random_state=42),
-        {'max_depth': [3, 4, 5, 6], 'min_samples_leaf': [5, 10, 20, 30]},
-        cv=TimeSeriesSplit(n_splits=5),
+        {'max_depth': [3, 5, 7], 'min_samples_leaf': [10, 30]},
+        cv=TimeSeriesSplit(n_splits=3),
         scoring='neg_mean_absolute_error',
-        n_jobs=-1,
+        n_jobs=2,
     )
     gs.fit(Xtr, Ytr_ret)
     model = DecisionTreeRegressor(random_state=42, **gs.best_params_).fit(Xtr, Ytr_ret)

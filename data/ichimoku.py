@@ -40,12 +40,23 @@ cửa sổ n phiên. Đây là định nghĩa BẤT KHẢ XÂM PHẠM của Ichi
 from __future__ import annotations
 import numpy as np
 import pandas as pd
+import streamlit as st
 
 
 TENKAN_N  = 9
 KIJUN_N   = 26
 SENKOU_N  = 52
 DISPLACE  = 26
+
+
+def _df_fingerprint(df: pd.DataFrame) -> tuple:
+    """Hash O(1) cho DataFrame OHLC: chỉ dùng (last_date, len, last_close)."""
+    if len(df) == 0:
+        return ('empty', 0, 0.0)
+    try:
+        return (str(df['Ngay'].iloc[-1]), int(len(df)), float(df['Close'].iloc[-1]))
+    except Exception:
+        return (id(df), int(len(df)), 0.0)
 
 
 def _donchian_mid(high: pd.Series, low: pd.Series, n: int) -> pd.Series:
@@ -62,6 +73,7 @@ _rolling_midpoint = _donchian_mid
 #  HÀM CHÍNH
 # ═════════════════════════════════════════════════════════════════════════
 
+@st.cache_data(show_spinner=False, hash_funcs={pd.DataFrame: _df_fingerprint})
 def add_ichimoku(df: pd.DataFrame,
                  tenkan_n: int = TENKAN_N,
                  kijun_n:  int = KIJUN_N,
