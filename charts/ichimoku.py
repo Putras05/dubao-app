@@ -70,47 +70,43 @@ def chart_ichimoku_plotly(df_ichi: pd.DataFrame, ticker: str, T: dict = None) ->
     sa_np = np.array(sa_all, dtype=float)
     sb_np = np.array(sb_all, dtype=float)
 
-    # Mask per-period — vùng bull (A>=B) xanh, bear (A<B) đỏ. Hiển thị chính
-    # xác lịch sử chuyển bull↔bear thay vì 1 màu cho toàn cloud.
-    bull_mask = sa_np >= sb_np
-    sa_bull   = np.where(bull_mask, sa_np, np.nan)
-    sb_bull   = np.where(bull_mask, sb_np, np.nan)
-    sa_bear   = np.where(~bull_mask, sa_np, np.nan)
-    sb_bear   = np.where(~bull_mask, sb_np, np.nan)
+    # FIX root cause "vùng xám": dùng `fill='toself'` self-closing polygon
+    # thay vì 4 trace `tonexty` chia chung x-domain (Plotly merge polygon
+    # giữa các trace cùng axis → alpha blend xanh+đỏ → muddy).
+    valid = ~(np.isnan(sa_np) | np.isnan(sb_np))
 
     fig = go.Figure()
 
-    # ── Mây Kumo XANH (bull): A>=B ─────────────────────────────────────
-    fig.add_trace(go.Scatter(
-        x=all_dates, y=sb_bull, mode='lines',
-        line=dict(width=0, color='rgba(0,0,0,0)'),
-        connectgaps=False,
-        showlegend=False, hoverinfo='skip',
-    ))
-    fig.add_trace(go.Scatter(
-        x=all_dates, y=sa_bull, mode='lines',
-        line=dict(width=0, color='rgba(0,0,0,0)'),
-        fill='tonexty', fillcolor=col_bull,
-        connectgaps=False,
-        name=t('ichi_chart.senkou_a'),
-        hoverinfo='skip',
-    ))
+    if valid.any():
+        x_arr = np.array(all_dates, dtype=object)
+        x_v   = x_arr[valid]
+        sa_v  = sa_np[valid]
+        sb_v  = sb_np[valid]
+        bull_mask = sa_v >= sb_v
 
-    # ── Mây Kumo ĐỎ (bear): A<B ────────────────────────────────────────
-    fig.add_trace(go.Scatter(
-        x=all_dates, y=sa_bear, mode='lines',
-        line=dict(width=0, color='rgba(0,0,0,0)'),
-        connectgaps=False,
-        showlegend=False, hoverinfo='skip',
-    ))
-    fig.add_trace(go.Scatter(
-        x=all_dates, y=sb_bear, mode='lines',
-        line=dict(width=0, color='rgba(0,0,0,0)'),
-        fill='tonexty', fillcolor=col_bear,
-        connectgaps=False,
-        name=t('ichi_chart.senkou_b'),
-        hoverinfo='skip',
-    ))
+        # Polygon BULL: top = sa khi bull, ngoài bull collapse về sb (height=0)
+        top_bull = np.where(bull_mask, sa_v, sb_v)
+        xs_bull = np.concatenate([x_v, x_v[::-1]])
+        ys_bull = np.concatenate([top_bull, sb_v[::-1]])
+        fig.add_trace(go.Scatter(
+            x=xs_bull, y=ys_bull,
+            fill='toself', fillcolor=col_bull,
+            line=dict(width=0, color='rgba(0,0,0,0)'),
+            name=t('ichi_chart.senkou_a'),
+            hoverinfo='skip', showlegend=False,
+        ))
+
+        # Polygon BEAR: top = sb khi bear, ngoài bear collapse về sa
+        top_bear = np.where(~bull_mask, sb_v, sa_v)
+        xs_bear = np.concatenate([x_v, x_v[::-1]])
+        ys_bear = np.concatenate([top_bear, sa_v[::-1]])
+        fig.add_trace(go.Scatter(
+            x=xs_bear, y=ys_bear,
+            fill='toself', fillcolor=col_bear,
+            line=dict(width=0, color='rgba(0,0,0,0)'),
+            name=t('ichi_chart.senkou_b'),
+            hoverinfo='skip', showlegend=False,
+        ))
 
     # ── Tenkan-sen ──
     fig.add_trace(go.Scatter(

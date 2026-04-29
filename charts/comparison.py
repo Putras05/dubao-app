@@ -329,6 +329,15 @@ _TF_FREQ = {'1D': None, '1W': 'W-FRI', '1M': 'MS', '3M': 'QS'}
 _TF_DEFAULT_DAYS = {'1D': 60, '1W': 365, '1M': 1095, '3M': 1825}
 
 
+@st.cache_data(
+    show_spinner=False, max_entries=64, ttl=600,
+    hash_funcs={
+        pd.DataFrame: lambda d: (str(d['Ngay'].iloc[0]) if len(d) else 'empty',
+                                  str(d['Ngay'].iloc[-1]) if len(d) else 'empty',
+                                  int(len(d)),
+                                  float(d['Close'].iloc[-1]) if len(d) else 0.0),
+    },
+)
 def _resample_ohlc(df: pd.DataFrame, freq: str | None) -> pd.DataFrame:
     """Resample daily OHLC → weekly/monthly/quarterly. None = no-op (1D)."""
     if freq is None or len(df) == 0:
@@ -347,18 +356,9 @@ def _resample_ohlc(df: pd.DataFrame, freq: str | None) -> pd.DataFrame:
     return out
 
 
-@st.cache_data(
-    show_spinner=False, max_entries=64, ttl=600,
-    hash_funcs={
-        # df: hash O(1) qua fingerprint (first_date, last_date, len, last_close)
-        pd.DataFrame: lambda d: (str(d['Ngay'].iloc[0]) if len(d) else 'empty',
-                                  str(d['Ngay'].iloc[-1]) if len(d) else 'empty',
-                                  int(len(d)),
-                                  float(d['Close'].iloc[-1]) if len(d) else 0.0),
-        # T: dict không hashable native; theme() cache same id → id() stable
-        dict: lambda T: id(T),
-    },
-)
+# NOTE: KHÔNG cache figure ở layer này — cache làm tắc patch màu/cloud, cũ trả
+# về Figure stale 10 phút sau mỗi lần sửa code. Heavy ops (resample, ichimoku)
+# đã có cache riêng (add_ichimoku, _resample_ohlc). Figure assembly < 30 ms.
 def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
                             interval: str = '1D',
                             show_sma: bool = True,
@@ -433,43 +433,54 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
         showlegend=False,
     ), row=1, col=1)
 
-    # ── Row 1: Ichimoku Cloud — MASK PER-PERIOD: vùng bull → xanh, bear → đỏ
-    # Tenkan dùng cam, Kijun dùng cyan để KHÔNG trùng màu với cloud bear/bull
-    # → tránh blend muddy. Bỏ Senkou A/B border lines (cloud fill đã đủ).
-    if show_ichimoku and 'Tenkan' in df.columns:
-        sa = df['Senkou_A']
-        sb = df['Senkou_B']
-        _bull_mask = sa >= sb
+    # ── Row 1: Ichimoku Cloud — KHÔNG mask + NaN (bug muddy/grey) ──────────
+    # Cách đúng: vẽ 4 trace LIÊN TỤC (không NaN), dùng np.where để "collapse"
+    # vùng không muốn về cùng mức ⇒ polygon zero-height ⇒ vô hình.
+    # Logic: với layer XANH, ngoài vùng bull ép sa→sb để fill=0; với layer ĐỎ
+    # ngoài vùng bear ép sa→sb để fill=0. Không có NaN ⇒ không có lỗ ⇒ không
+    # có sliver overlap muddy. Trace order: Senkou_B baseline trước, Senkou_A
+    # sau với fill='tonexty' (fill về trace KỀ TRƯỚC = baseline B, KHÔNG về
+    # Candlestick).
+    if show_ichimoku and 'Tenkan' in df.columns and len(df) > 0:
+        # ROOT CAUSE đã từng làm cloud xám: 2 layer dùng `fill='tonexty'` chia
+        # CHUNG x-domain → Plotly merge polygon giữa các trace + alpha blend
+        # đỏ + xanh → vùng MUDDY ở chỗ 2 layer collapse cùng baseline.
+        # FIX: dùng `fill='toself'` — mỗi polygon TỰ ĐÓNG độc lập, không phụ
+        # thuộc trace trước → không cross-trace merge.
+        import numpy as _np
+        sa_arr = df['Senkou_A'].values.astype(float)
+        sb_arr = df['Senkou_B'].values.astype(float)
+        _valid = ~(_np.isnan(sa_arr) | _np.isnan(sb_arr))
+        if _valid.any():
+            x_arr = _np.asarray(dates)
+            x_v   = x_arr[_valid]
+            sa_v  = sa_arr[_valid]
+            sb_v  = sb_arr[_valid]
+            _bull = sa_v >= sb_v
 
-        # Mây XANH (bull): vùng A>=B
-        fig.add_trace(go.Scatter(
-            x=dates, y=sb.where(_bull_mask).values,
-            mode='lines', line=dict(width=0, color='rgba(0,0,0,0)'),
-            connectgaps=False,
-            legendgroup='ichimoku', showlegend=False, hoverinfo='skip',
-        ), row=1, col=1)
-        fig.add_trace(go.Scatter(
-            x=dates, y=sa.where(_bull_mask).values,
-            mode='lines', line=dict(width=0, color='rgba(0,0,0,0)'),
-            fill='tonexty', fillcolor='rgba(5,150,105,0.22)',
-            connectgaps=False,
-            legendgroup='ichimoku', showlegend=False, hoverinfo='skip',
-        ), row=1, col=1)
+            # BULL polygon: top = sa khi bull, ngược lại collapse về sb (height=0)
+            top_bull = _np.where(_bull, sa_v, sb_v)
+            xs_bull  = _np.concatenate([x_v, x_v[::-1]])
+            ys_bull  = _np.concatenate([top_bull, sb_v[::-1]])
+            fig.add_trace(go.Scatter(
+                x=xs_bull, y=ys_bull,
+                fill='toself', fillcolor='rgba(16,185,129,0.32)',
+                line=dict(width=0, color='rgba(0,0,0,0)'),
+                hoverinfo='skip', showlegend=False,
+                legendgroup='ichimoku',
+            ), row=1, col=1)
 
-        # Mây ĐỎ (bear): vùng A<B
-        fig.add_trace(go.Scatter(
-            x=dates, y=sa.where(~_bull_mask).values,
-            mode='lines', line=dict(width=0, color='rgba(0,0,0,0)'),
-            connectgaps=False,
-            legendgroup='ichimoku', showlegend=False, hoverinfo='skip',
-        ), row=1, col=1)
-        fig.add_trace(go.Scatter(
-            x=dates, y=sb.where(~_bull_mask).values,
-            mode='lines', line=dict(width=0, color='rgba(0,0,0,0)'),
-            fill='tonexty', fillcolor='rgba(185,28,28,0.20)',
-            connectgaps=False,
-            legendgroup='ichimoku', showlegend=False, hoverinfo='skip',
-        ), row=1, col=1)
+            # BEAR polygon: top = sb khi bear, ngược lại collapse về sa
+            top_bear = _np.where(~_bull, sb_v, sa_v)
+            xs_bear  = _np.concatenate([x_v, x_v[::-1]])
+            ys_bear  = _np.concatenate([top_bear, sa_v[::-1]])
+            fig.add_trace(go.Scatter(
+                x=xs_bear, y=ys_bear,
+                fill='toself', fillcolor='rgba(239,68,68,0.30)',
+                line=dict(width=0, color='rgba(0,0,0,0)'),
+                hoverinfo='skip', showlegend=False,
+                legendgroup='ichimoku',
+            ), row=1, col=1)
 
         # Tenkan = CAM (không trùng cloud red), Kijun = CYAN, Chikou = TÍM
         fig.add_trace(go.Scatter(
