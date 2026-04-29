@@ -386,17 +386,21 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
     # 2. Resample theo timeframe
     df = _resample_ohlc(df, _TF_FREQ.get(interval))
 
-    # 3. SMA tính lại trên (resampled) data
-    if len(df) > 0:
-        df['SMA5']  = df['Close'].rolling(5,  min_periods=5).mean()
-        df['SMA20'] = df['Close'].rolling(20, min_periods=20).mean()
-
-    # 4. Ichimoku (nếu bật) — yêu cầu đủ 52+26=78 bars cho cloud đầy đủ
+    # 3. Ichimoku (nếu bật) — chạy TRƯỚC SMA vì add_ichimoku cache theo
+    # fingerprint chỉ kiểm tra (first_date,last_date,len,last_close) → có
+    # thể trả về df cached từ caller khác KHÔNG có SMA columns. Tính SMA
+    # SAU bước này để chắc chắn columns tồn tại.
     if show_ichimoku and len(df) > 30:
         try:
             df = add_ichimoku(df)
         except Exception:
             pass
+
+    # 4. SMA — tính LAST để columns chắc chắn có trong df trước khi add trace
+    if len(df) > 0:
+        df = df.copy()  # tránh mutate cached object từ add_ichimoku
+        df['SMA5']  = df['Close'].rolling(5,  min_periods=5).mean()
+        df['SMA20'] = df['Close'].rolling(20, min_periods=20).mean()
 
     dates = pd.to_datetime(df['Ngay'])
     inc_color = '#10B981'
