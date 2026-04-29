@@ -714,7 +714,7 @@ def _render_sidebar_history(T: dict):
 
     # ── New conversation ─────────────────────────────────────────
     if st.button(t('chatbot.new_conv'), key='new_conv',
-                 use_container_width=True, type='primary'):
+                 use_container_width=True, type='secondary'):
         new_id = ch.create_conversation()
         st.session_state['active_conv_id'] = new_id
         st.session_state.pop('renaming_conv_id', None)
@@ -821,9 +821,11 @@ def _render_sidebar_history(T: dict):
 
         _c1, _c2, _c3 = st.columns([5, 1, 1])
         with _c1:
-            if st.button(conv['title'], key=f'conv_{cid}',
-                         use_container_width=True,
-                         type='primary' if is_active else 'secondary'):
+            # Luôn dùng secondary — không bị Streamlit primary highlight xanh dính.
+            # Active state đánh dấu bằng prefix ● ở title.
+            _label_btn = f'●  {conv["title"]}' if is_active else conv['title']
+            if st.button(_label_btn, key=f'conv_{cid}',
+                         use_container_width=True, type='secondary'):
                 st.session_state['active_conv_id'] = cid
                 st.rerun()
         with _c2:

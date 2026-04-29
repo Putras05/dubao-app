@@ -1143,13 +1143,15 @@ def _page_cart_tree(pdf, ticker, r3, ar_order, lang='VI'):
                       color=_CONN_CLR, linewidth=_CONN_LW, solid_capstyle='round')
         ax_tree.plot([rcx, rcx], [mid_y, rcy + rch],
                       color=_CONN_CLR, linewidth=_CONN_LW, solid_capstyle='round')
-        # True/False labels — pill trắng để đọc rõ trên connector
-        ax_tree.text((px + lcx) / 2, mid_y + 0.05, 'TRUE',
+        # True/False labels — pill trắng, theo lang VI = ĐÚNG/SAI · EN = TRUE/FALSE
+        _lbl_true  = _L('ĐÚNG',  'TRUE',  lang)
+        _lbl_false = _L('SAI',   'FALSE', lang)
+        ax_tree.text((px + lcx) / 2, mid_y + 0.05, _lbl_true,
                       fontsize=6.5, color='#047857', ha='center', va='center',
                       weight='bold', family='DejaVu Sans',
                       bbox=dict(facecolor='white', edgecolor='#D1FAE5',
                                 linewidth=0.6, boxstyle='round,pad=0.2'))
-        ax_tree.text((px + rcx) / 2, mid_y + 0.05, 'FALSE',
+        ax_tree.text((px + rcx) / 2, mid_y + 0.05, _lbl_false,
                       fontsize=6.5, color='#B91C1C', ha='center', va='center',
                       weight='bold', family='DejaVu Sans',
                       bbox=dict(facecolor='white', edgecolor='#FEE2E2',
