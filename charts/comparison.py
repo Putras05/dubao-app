@@ -324,53 +324,94 @@ def chart_test_result_plotly(res: dict, ticker: str, method: str,
     fig.update_xaxes(range=[mn, mx], row=1, col=2)
     return fig
 
-def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict) -> go.Figure:
-    """Candlestick chart kiểu TradingView — pan/zoom 5 năm gần nhất.
+_TF_FREQ = {'1D': None, '1W': 'W-FRI', '1M': 'MS', '3M': 'QS'}
+_TF_DEFAULT_DAYS = {'1D': 30, '1W': 180, '1M': 730, '3M': 1825}
 
-    Giới hạn 5 năm để Plotly render mượt (1260 nến vs 3500+). Default zoom
-    1 tháng cuối → mỗi nến ~60px. Có rangeselector + rangeslider để pan/zoom.
+
+def _resample_ohlc(df: pd.DataFrame, freq: str | None) -> pd.DataFrame:
+    """Resample daily OHLC → weekly/monthly/quarterly. None = no-op (1D)."""
+    if freq is None or len(df) == 0:
+        return df.copy()
+    g = df.set_index(pd.to_datetime(df['Ngay'])).resample(freq)
+    out = pd.DataFrame({
+        'Open':   g['Open'].first(),
+        'High':   g['High'].max(),
+        'Low':    g['Low'].min(),
+        'Close':  g['Close'].last(),
+        'Volume': g['Volume'].sum() if 'Volume' in df.columns else 0,
+    }).dropna(subset=['Open', 'High', 'Low', 'Close'])
+    out = out.reset_index().rename(columns={'index': 'Ngay'})
+    if 'Ngay' not in out.columns and len(out.columns):
+        out = out.rename(columns={out.columns[0]: 'Ngay'})
+    return out
+
+
+def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
+                            interval: str = '1D') -> go.Figure:
+    """Candlestick chart kiểu TradingView — timeframe 1D/1W/1M/3M + SMA 5/20.
+
+    Giới hạn 5 năm để render mượt. Resample từ daily nếu interval != 1D,
+    SMA tính lại trên data đã resample (đúng nghĩa cho mỗi khung).
     """
-    is_dark = T.get('is_dark', False)
     lang = st.session_state.get('lang', 'VI')
+    label_all = 'Tất cả' if lang == 'VI' else 'All'
 
-    # Giới hạn 5 năm gần nhất → app mượt hơn nhiều (rangeslider không phải
-    # render 3500+ nến trong mini view).
+    # 1. Giới hạn 5 năm gần nhất
     if len(df) > 0:
         _last_date = pd.to_datetime(df['Ngay'].iloc[-1])
         _cutoff = _last_date - pd.Timedelta(days=5 * 365)
         df = df[pd.to_datetime(df['Ngay']) >= _cutoff].reset_index(drop=True)
 
-    dates = pd.to_datetime(df['Ngay'])
+    # 2. Resample theo timeframe
+    df = _resample_ohlc(df, _TF_FREQ.get(interval))
 
+    # 3. SMA tính lại trên (resampled) data
+    if len(df) > 0:
+        df['SMA5']  = df['Close'].rolling(5,  min_periods=5).mean()
+        df['SMA20'] = df['Close'].rolling(20, min_periods=20).mean()
+
+    dates = pd.to_datetime(df['Ngay'])
     inc_color = '#10B981'
     dec_color = '#EF4444'
-    label_all = 'Tất cả' if lang == 'VI' else 'All'
+    sma5_color  = '#F59E0B'
+    sma20_color = '#8B5CF6'
 
-    fig = go.Figure(data=[go.Candlestick(
+    fig = go.Figure()
+
+    fig.add_trace(go.Candlestick(
         x=dates,
         open=df['Open'].values,
         high=df['High'].values,
         low=df['Low'].values,
         close=df['Close'].values,
-        increasing=dict(
-            line=dict(color=inc_color, width=1),
-            fillcolor=inc_color,
-        ),
-        decreasing=dict(
-            line=dict(color=dec_color, width=1),
-            fillcolor=dec_color,
-        ),
+        increasing=dict(line=dict(color=inc_color, width=1), fillcolor=inc_color),
+        decreasing=dict(line=dict(color=dec_color, width=1), fillcolor=dec_color),
         name=ticker,
         showlegend=False,
-    )])
+    ))
 
-    # Default zoom = 1 tháng cuối → nến to ~60px, rõ ràng
+    if len(df) > 0:
+        fig.add_trace(go.Scatter(
+            x=dates, y=df['SMA5'].values, mode='lines', name='SMA 5',
+            line=dict(color=sma5_color, width=1.3),
+            hovertemplate='SMA 5: %{y:,.2f}<extra></extra>',
+        ))
+        fig.add_trace(go.Scatter(
+            x=dates, y=df['SMA20'].values, mode='lines', name='SMA 20',
+            line=dict(color=sma20_color, width=1.3),
+            hovertemplate='SMA 20: %{y:,.2f}<extra></extra>',
+        ))
+
+    # 4. Default zoom theo interval
     if len(dates) > 0:
         _last = dates.iloc[-1]
-        _start_default = _last - pd.Timedelta(days=30)
-        _xaxis_range = [_start_default, _last + pd.Timedelta(days=2)]
+        _days = _TF_DEFAULT_DAYS.get(interval, 30)
+        _xaxis_range = [_last - pd.Timedelta(days=_days), _last + pd.Timedelta(days=2)]
     else:
         _xaxis_range = None
+
+    # 5. Rangebreaks chỉ áp dụng cho 1D (weekly/monthly đã agg, không có gap)
+    _rangebreaks = [dict(bounds=['sat', 'mon'])] if interval == '1D' else None
 
     fig.update_layout(
         height=520,
@@ -378,13 +419,19 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict) -> go.Figure
         paper_bgcolor=T['bg_chart'],
         plot_bgcolor=T['bg_chart'],
         font=dict(family='Inter, system-ui, sans-serif', size=11, color=T['text_primary']),
-        showlegend=False,
+        showlegend=True,
         hovermode='x unified',
         hoverlabel=dict(
             bgcolor=T['bg_card'], bordercolor=T['border'],
             font_size=12, font_color=T['text_primary'],
         ),
-        uirevision=f'candlestick_{ticker}',
+        legend=dict(
+            orientation='h', yanchor='bottom', y=1.02,
+            xanchor='right', x=1.0,
+            bgcolor='rgba(0,0,0,0)',
+            font=dict(size=11, color=T['text_primary']),
+        ),
+        uirevision=f'cs_{ticker}_{interval}',
         xaxis=dict(
             range=_xaxis_range,
             type='date',
@@ -417,7 +464,7 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict) -> go.Figure
                 borderwidth=1,
                 thickness=0.04,
             ),
-            rangebreaks=[dict(bounds=['sat', 'mon'])],
+            **({'rangebreaks': _rangebreaks} if _rangebreaks else {}),
         ),
         yaxis=dict(
             showgrid=True, gridcolor=T['grid'], gridwidth=1,
@@ -430,3 +477,45 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict) -> go.Figure
         ),
     )
     return fig
+
+
+def render_candlestick_info_bar(df: pd.DataFrame, ticker: str, interval: str,
+                                 T: dict) -> str:
+    """HTML info bar trên đầu chart — hiển thị O/H/L/C + change% + SMA giống TradingView."""
+    if len(df) < 2:
+        return ''
+    df = _resample_ohlc(df, _TF_FREQ.get(interval))
+    if len(df) < 2:
+        return ''
+    df['SMA5']  = df['Close'].rolling(5,  min_periods=5).mean()
+    df['SMA20'] = df['Close'].rolling(20, min_periods=20).mean()
+
+    last = df.iloc[-1]
+    prev = df.iloc[-2]
+    chg  = float(last['Close']) - float(prev['Close'])
+    pct  = (chg / float(prev['Close']) * 100) if prev['Close'] else 0.0
+    up   = chg >= 0
+    chg_color = '#10B981' if up else '#EF4444'
+    sign = '+' if up else ''
+
+    def _fmt_sma(v):
+        return f'{v:,.2f}' if pd.notna(v) else '—'
+
+    return (
+        f'<div style="display:flex;flex-wrap:wrap;gap:14px;align-items:center;'
+        f'font-family:Inter,system-ui,sans-serif;font-size:12px;'
+        f'background:{T["bg_card"]};border:1px solid {T["border"]};'
+        f'padding:10px 14px;border-radius:8px;color:{T["text_primary"]};'
+        f'margin-bottom:8px">'
+        f'<span style="font-weight:800;color:{T["accent"]};letter-spacing:.5px">'
+        f'{ticker} · {interval} · HOSE</span>'
+        f'<span>O <b>{last["Open"]:,.2f}</b></span>'
+        f'<span>H <b style="color:#10B981">{last["High"]:,.2f}</b></span>'
+        f'<span>L <b style="color:#EF4444">{last["Low"]:,.2f}</b></span>'
+        f'<span>C <b>{last["Close"]:,.2f}</b></span>'
+        f'<span style="color:{chg_color};font-weight:700">'
+        f'{sign}{chg:,.2f} ({sign}{pct:.2f}%)</span>'
+        f'<span style="color:#F59E0B;margin-left:auto">SMA 5: <b>{_fmt_sma(last["SMA5"])}</b></span>'
+        f'<span style="color:#8B5CF6">SMA 20: <b>{_fmt_sma(last["SMA20"])}</b></span>'
+        f'</div>'
+    )

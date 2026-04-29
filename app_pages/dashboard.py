@@ -15,7 +15,7 @@ from ui.components import (
     sparkline_svg, render_ai_insight,
     render_param_timeline, render_param_badge,
 )
-from charts.comparison import chart_price_candlestick
+from charts.comparison import chart_price_candlestick, render_candlestick_info_bar
 from charts.base import _PLOTLY_CONFIG
 
 
@@ -397,22 +397,48 @@ def render(ticker, train_ratio, date_from, date_to, df, r1, r2, r3, m1, m2, m3, 
 
     st.markdown(f'<div class="sec-hdr">{t("dash.comparison")}</div>', unsafe_allow_html=True)
     _is_en_cmp = st.session_state.get('lang', 'VI') == 'EN'
+
+    # Timeframe selector (1D / 1W / 1M / 3M)
+    _tf_label = 'Khung thời gian' if not _is_en_cmp else 'Timeframe'
+    _tf_options = ['1D', '1W', '1M', '3M']
+    _selected_tf = st.segmented_control(
+        _tf_label,
+        options=_tf_options,
+        default='1D',
+        key=f'cs_tf_{ticker}',
+        label_visibility='collapsed',
+    )
+    if _selected_tf is None:
+        _selected_tf = '1D'
+
     _cmp_hint = (
-        'Đơn vị giá: <b>nghìn đ</b> · Nến <span style="color:#10B981">xanh</span> = tăng, '
+        'Đơn vị giá: <b>nghìn đ</b> · Chọn khung thời gian <b>1D/1W/1M/3M</b> · '
+        'Nến <span style="color:#10B981">xanh</span> = tăng, '
         '<span style="color:#EF4444">đỏ</span> = giảm · '
-        'Click <b>1M/3M/6M/1N/Tất cả</b> để zoom · Kéo <b>thanh dưới</b> để xem lịch sử.'
+        'Đường <span style="color:#F59E0B">SMA 5</span> & '
+        '<span style="color:#8B5CF6">SMA 20</span> · '
+        'Kéo <b>thanh dưới</b> để xem lịch sử.'
         if not _is_en_cmp else
-        'Price unit: <b>k VND</b> · <span style="color:#10B981">Green</span> = up, '
+        'Price unit: <b>k VND</b> · Pick timeframe <b>1D/1W/1M/3M</b> · '
+        '<span style="color:#10B981">Green</span> = up, '
         '<span style="color:#EF4444">red</span> = down · '
-        'Click <b>1M/3M/6M/1Y/All</b> to zoom · Drag <b>bottom slider</b> to scroll history.'
+        '<span style="color:#F59E0B">SMA 5</span> & '
+        '<span style="color:#8B5CF6">SMA 20</span> overlays · '
+        'Drag <b>bottom slider</b> to scroll history.'
     )
     st.markdown(
         f'<div style="font-size:11px;color:{_T["text_muted"]};margin:-4px 0 6px;'
         f'line-height:1.5">{_cmp_hint}</div>',
         unsafe_allow_html=True,
     )
+
+    # Info bar OHLC + SMA giống TradingView
+    _info_bar = render_candlestick_info_bar(df, ticker, _selected_tf, _T)
+    if _info_bar:
+        st.markdown(_info_bar, unsafe_allow_html=True)
+
     try:
-        fig_cmp = chart_price_candlestick(df, ticker, _T)
+        fig_cmp = chart_price_candlestick(df, ticker, _T, interval=_selected_tf)
         st.plotly_chart(fig_cmp, use_container_width=True, config=_PLOTLY_CONFIG)
     except Exception as _e:
         st.error(f'Chart error: {_e}')
