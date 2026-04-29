@@ -550,6 +550,8 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
         ),
         uirevision=f'cs_{ticker}_{interval}',
         bargap=0.15,
+        # TradingView-style: drag = pan, wheel = zoom
+        dragmode='pan',
     )
 
     # X-axis chính (row 2, vì shared) — rangeselector đặt trên row 1
@@ -593,26 +595,30 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
         row=1, col=1,
     )
 
-    # Y-axis row 1 (price) — set explicit range theo visible window để nến không bị squash
+    # Y-axis row 1 (price) — drag/scroll trên thanh để zoom Y (TradingView style)
     fig.update_yaxes(
         range=_yrange_price,
+        fixedrange=False,  # cho phép drag thanh price để zoom Y
         showgrid=True, gridcolor=T['grid'], gridwidth=1,
         zeroline=False, showline=False, ticks='',
         tickformat=',.1f',
         tickfont=dict(size=10, color=T['text_muted']),
         title=None,
+        side='right',  # price scale ở bên phải giống TradingView
         showspikes=True, spikecolor=T['accent'], spikemode='across',
         spikesnap='cursor', spikedash='dot', spikethickness=1,
         row=1, col=1,
     )
-    # Y-axis row 2 (volume) — compact, range theo visible window
+    # Y-axis row 2 (volume) — compact, drag được
     fig.update_yaxes(
         range=_yrange_volume,
+        fixedrange=False,
         showgrid=True, gridcolor=T['grid'], gridwidth=1,
         zeroline=False, showline=False, ticks='',
         tickformat='.2s',  # 1.2k, 3.4M
         tickfont=dict(size=9, color=T['text_muted']),
         title=dict(text='Volume', font=dict(size=10, color=T['text_muted']), standoff=8),
+        side='right',
         row=2, col=1,
     )
 
