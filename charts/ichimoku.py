@@ -27,8 +27,9 @@ def chart_ichimoku_plotly(df_ichi: pd.DataFrame, ticker: str, T: dict = None) ->
     col_senA   = '#34D399' if is_dark else '#059669'
     col_senB   = '#FCA5A5' if is_dark else '#B91C1C'
     col_chikou = '#C084FC' if is_dark else '#7C3AED'
-    col_bull   = 'rgba(52,211,153,0.18)' if is_dark else 'rgba(5,150,105,0.12)'
-    col_bear   = 'rgba(248,113,113,0.20)' if is_dark else 'rgba(185,28,28,0.10)'
+    # Cloud opacity bump để mây xanh/đỏ rõ hơn (per-period mask)
+    col_bull   = 'rgba(52,211,153,0.28)' if is_dark else 'rgba(5,150,105,0.22)'
+    col_bear   = 'rgba(248,113,113,0.30)' if is_dark else 'rgba(185,28,28,0.20)'
     bg         = T['bg_card']
     fg         = T['text_primary']
     muted      = T.get('text_muted', '#64748B')
@@ -69,26 +70,46 @@ def chart_ichimoku_plotly(df_ichi: pd.DataFrame, ticker: str, T: dict = None) ->
     sa_np = np.array(sa_all, dtype=float)
     sb_np = np.array(sb_all, dtype=float)
 
-    # Màu mây dựa vào trạng thái hiện tại
-    valid = ~(np.isnan(sa_np) | np.isnan(sb_np))
-    is_bull_now = bool(sa_np[valid][-1] >= sb_np[valid][-1]) if valid.any() else True
-    fill_c = col_bull if is_bull_now else col_bear
+    # Mask per-period — vùng bull (A>=B) xanh, bear (A<B) đỏ. Hiển thị chính
+    # xác lịch sử chuyển bull↔bear thay vì 1 màu cho toàn cloud.
+    bull_mask = sa_np >= sb_np
+    sa_bull   = np.where(bull_mask, sa_np, np.nan)
+    sb_bull   = np.where(bull_mask, sb_np, np.nan)
+    sa_bear   = np.where(~bull_mask, sa_np, np.nan)
+    sb_bear   = np.where(~bull_mask, sb_np, np.nan)
 
     fig = go.Figure()
 
-    # ── Mây Kumo: Senkou A trước, Senkou B fill='tonexty' ──
+    # ── Mây Kumo XANH (bull): A>=B ─────────────────────────────────────
     fig.add_trace(go.Scatter(
-        x=all_dates, y=sa_all, mode='lines',
-        name=t('ichi_chart.senkou_a'),
-        line=dict(color=col_senA, width=1.0),
-        hovertemplate='Senkou A: %{y:,.3f}<extra></extra>',
+        x=all_dates, y=sb_bull, mode='lines',
+        line=dict(width=0, color='rgba(0,0,0,0)'),
+        connectgaps=False,
+        showlegend=False, hoverinfo='skip',
     ))
     fig.add_trace(go.Scatter(
-        x=all_dates, y=sb_all, mode='lines',
+        x=all_dates, y=sa_bull, mode='lines',
+        line=dict(width=0, color='rgba(0,0,0,0)'),
+        fill='tonexty', fillcolor=col_bull,
+        connectgaps=False,
+        name=t('ichi_chart.senkou_a'),
+        hoverinfo='skip',
+    ))
+
+    # ── Mây Kumo ĐỎ (bear): A<B ────────────────────────────────────────
+    fig.add_trace(go.Scatter(
+        x=all_dates, y=sa_bear, mode='lines',
+        line=dict(width=0, color='rgba(0,0,0,0)'),
+        connectgaps=False,
+        showlegend=False, hoverinfo='skip',
+    ))
+    fig.add_trace(go.Scatter(
+        x=all_dates, y=sb_bear, mode='lines',
+        line=dict(width=0, color='rgba(0,0,0,0)'),
+        fill='tonexty', fillcolor=col_bear,
+        connectgaps=False,
         name=t('ichi_chart.senkou_b'),
-        line=dict(color=col_senB, width=1.0),
-        fill='tonexty', fillcolor=fill_c,
-        hovertemplate='Senkou B: %{y:,.3f}<extra></extra>',
+        hoverinfo='skip',
     ))
 
     # ── Tenkan-sen ──

@@ -433,53 +433,60 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
         showlegend=False,
     ), row=1, col=1)
 
-    # ── Row 1: Ichimoku Cloud — kỹ thuật giống trang Tín hiệu (sạch, không muddy)
-    # Single color cloud theo state HIỆN TẠI (không mask per-point). Khi bull
-    # hiện tại → toàn cloud xanh; khi bear → toàn cloud đỏ. Đơn giản & rõ.
+    # ── Row 1: Ichimoku Cloud — MASK PER-PERIOD: vùng bull → xanh, bear → đỏ
+    # Tenkan dùng cam, Kijun dùng cyan để KHÔNG trùng màu với cloud bear/bull
+    # → tránh blend muddy. Bỏ Senkou A/B border lines (cloud fill đã đủ).
     if show_ichimoku and 'Tenkan' in df.columns:
         sa = df['Senkou_A']
         sb = df['Senkou_B']
+        _bull_mask = sa >= sb
 
-        _valid = sa.notna() & sb.notna()
-        if _valid.any():
-            _last_valid = sa[_valid].index[-1]
-            _is_bull_now = sa.loc[_last_valid] >= sb.loc[_last_valid]
-        else:
-            _is_bull_now = True
-        _fill_c = 'rgba(5,150,105,0.14)' if _is_bull_now else 'rgba(185,28,28,0.12)'
-
-        # Senkou A — line emerald
+        # Mây XANH (bull): vùng A>=B
         fig.add_trace(go.Scatter(
-            x=dates, y=sa.values, mode='lines', name='Senkou A',
-            line=dict(color='#059669', width=1.0),
-            legendgroup='ichimoku', showlegend=False,
-            hovertemplate='Senkou A: %{y:,.2f}<extra></extra>',
+            x=dates, y=sb.where(_bull_mask).values,
+            mode='lines', line=dict(width=0, color='rgba(0,0,0,0)'),
+            connectgaps=False,
+            legendgroup='ichimoku', showlegend=False, hoverinfo='skip',
         ), row=1, col=1)
-        # Senkou B — line red, fill='tonexty' tới Senkou A → cloud 1 màu
         fig.add_trace(go.Scatter(
-            x=dates, y=sb.values, mode='lines', name='Senkou B',
-            line=dict(color='#B91C1C', width=1.0),
-            fill='tonexty', fillcolor=_fill_c,
-            legendgroup='ichimoku', showlegend=False,
-            hovertemplate='Senkou B: %{y:,.2f}<extra></extra>',
+            x=dates, y=sa.where(_bull_mask).values,
+            mode='lines', line=dict(width=0, color='rgba(0,0,0,0)'),
+            fill='tonexty', fillcolor='rgba(5,150,105,0.22)',
+            connectgaps=False,
+            legendgroup='ichimoku', showlegend=False, hoverinfo='skip',
         ), row=1, col=1)
 
-        # Tenkan red đậm + Kijun blue dashed (giống Ichimoku page)
+        # Mây ĐỎ (bear): vùng A<B
+        fig.add_trace(go.Scatter(
+            x=dates, y=sa.where(~_bull_mask).values,
+            mode='lines', line=dict(width=0, color='rgba(0,0,0,0)'),
+            connectgaps=False,
+            legendgroup='ichimoku', showlegend=False, hoverinfo='skip',
+        ), row=1, col=1)
+        fig.add_trace(go.Scatter(
+            x=dates, y=sb.where(~_bull_mask).values,
+            mode='lines', line=dict(width=0, color='rgba(0,0,0,0)'),
+            fill='tonexty', fillcolor='rgba(185,28,28,0.20)',
+            connectgaps=False,
+            legendgroup='ichimoku', showlegend=False, hoverinfo='skip',
+        ), row=1, col=1)
+
+        # Tenkan = CAM (không trùng cloud red), Kijun = CYAN, Chikou = TÍM
         fig.add_trace(go.Scatter(
             x=dates, y=df['Tenkan'].values, mode='lines', name='Tenkan',
-            line=dict(color='#DC2626', width=1.5),
+            line=dict(color='#F97316', width=1.4),
             legendgroup='ichimoku', showlegend=False,
             hovertemplate='Tenkan: %{y:,.2f}<extra></extra>',
         ), row=1, col=1)
         fig.add_trace(go.Scatter(
             x=dates, y=df['Kijun'].values, mode='lines', name='Kijun',
-            line=dict(color='#1565C0', width=1.8, dash='dash'),
+            line=dict(color='#0EA5E9', width=1.6, dash='dash'),
             legendgroup='ichimoku', showlegend=False,
             hovertemplate='Kijun: %{y:,.2f}<extra></extra>',
         ), row=1, col=1)
         fig.add_trace(go.Scatter(
             x=dates, y=df['Chikou'].values, mode='lines', name='Chikou',
-            line=dict(color='#7C3AED', width=1.2, dash='dot'),
+            line=dict(color='#A855F7', width=1.1, dash='dot'),
             legendgroup='ichimoku', showlegend=False,
             hovertemplate='Chikou: %{y:,.2f}<extra></extra>',
         ), row=1, col=1)
