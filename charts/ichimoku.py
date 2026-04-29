@@ -24,9 +24,8 @@ def chart_ichimoku_plotly(df_ichi: pd.DataFrame, ticker: str, T: dict = None) ->
     col_close  = _clr.get(ticker, '#1565C0')
     col_tenkan = '#F87171' if is_dark else '#DC2626'
     col_kijun  = '#60A5FA' if is_dark else '#1565C0'
-    col_senA   = '#34D399' if is_dark else '#059669'
-    col_senB   = '#FCA5A5' if is_dark else '#B91C1C'
     col_chikou = '#C084FC' if is_dark else '#7C3AED'
+    # col_senA/col_senB đã bỏ vì border lines bị xoá (cloud fill đã đủ màu)
     # Cloud opacity bump để mây xanh/đỏ rõ hơn (per-period mask)
     col_bull   = 'rgba(52,211,153,0.28)' if is_dark else 'rgba(5,150,105,0.22)'
     col_bear   = 'rgba(248,113,113,0.30)' if is_dark else 'rgba(185,28,28,0.20)'

@@ -329,15 +329,19 @@ def _inline_md(text: str) -> str:
 
 def _strip_legacy_html(text: str) -> str:
     """Remove legacy raw-HTML blocks (`<div style="...">…</div>`) persisted vào
-    chat history TRƯỚC commit 77d484d. Message mới đã là markdown plain → regex
-    no-op. Diagram đi theo field `diagram` riêng, KHÔNG nằm trong content.
+    chat history TRƯỚC commit 77d484d. Narrow regex CHỈ match HTML tags thật
+    (div/span/a/section/p/table/tr/td) → không ăn nhầm `Y_t < Kumo_top` hay
+    placeholder `<UNK>` trong text bình thường.
     """
     import re
-    if not text or '<' not in text:
+    # Fast path — chỉ chạy nếu thực sự có legacy HTML (style= attribute)
+    if not text or 'style=' not in text:
         return text
-    text = re.sub(r'<(div|span|a|section|p)\b[^>]*>.*?</\1>',
+    _BLOCK_TAGS = r'(?:div|span|a|section|p|table|tr|td)'
+    text = re.sub(rf'<{_BLOCK_TAGS}\b[^>]*>.*?</{_BLOCK_TAGS}\s*>',
                   '', text, flags=re.DOTALL | re.IGNORECASE)
-    text = re.sub(r'<[^>]+/?>', '', text)
+    text = re.sub(rf'</?\s*{_BLOCK_TAGS}\b[^>]*/?>',
+                  '', text, flags=re.IGNORECASE)
     text = re.sub(r'\n{3,}', '\n\n', text)
     return text.strip()
 
@@ -2355,7 +2359,10 @@ html body [data-testid="stSidebar"] [data-testid="stTextInput"] input::-webkit-i
                     ch.remove_last_message(active_id)
                     _regen_pending = last_user_q
             try:
-                st.query_params.clear()
+                # CHỈ xóa 'regen' key — KHÔNG clear() toàn bộ (tránh wipe
+                # các query param khác như lang/theme/page).
+                if 'regen' in st.query_params:
+                    del st.query_params['regen']
             except Exception:
                 pass
 

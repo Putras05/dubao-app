@@ -744,8 +744,12 @@ def _page_scatter_coef(pdf, ticker, r1, r2, r3, m1, m2, m3, ar_order, lang='VI')
             [_term(mlr_coef[2*ar_order + k], 'HL', k) for k in range(ar_order)]
         )
         # 1 dòng đầy đủ — fontsize giảm theo p để vẫn fit page width
+        # p=1: 4 terms · p=2: 7 · p=3: 10 · p=4: 13 · p=5: 16 (3p+1)
         full_eq = f'Ŷ(t+1) = {mlr_intercept:+.4f}  ' + '  '.join(terms)
-        _eq_fs = 8.5 if ar_order == 1 else (7.0 if ar_order == 2 else 5.8)
+        _eq_fs = (8.5 if ar_order == 1 else
+                  7.0 if ar_order == 2 else
+                  5.8 if ar_order == 3 else
+                  4.7 if ar_order == 4 else 4.0)
         ax_t.text(0.08, y_mlr_start - 0.025, full_eq,
                   fontsize=_eq_fs, color=_C_TEXT, family='DejaVu Sans Mono',
                   transform=ax_t.transAxes, verticalalignment='top')

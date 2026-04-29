@@ -1,12 +1,10 @@
 import streamlit as st
 
-from core.themes import theme
-
 
 def render(ticker, train_ratio, date_from, date_to, df, r1, r2, r3, m1, m2, m3, _T,
            ar_order=1):
     _is_en = st.session_state.get('lang', 'VI') == 'EN'
-    _T = theme()
+    # _T param từ caller — KHÔNG override bằng theme() (mất theme override nếu caller pass)
 
     st.markdown(f"""
 <div style="background:{_T['banner_bg']};border-radius:14px;padding:24px 32px;
