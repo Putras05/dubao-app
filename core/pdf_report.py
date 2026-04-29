@@ -728,29 +728,27 @@ def _page_scatter_coef(pdf, ticker, r1, r2, r3, m1, m2, m3, ar_order, lang='VI')
               fontsize=11, color=_C_MLR, weight='bold',
               transform=ax_t.transAxes, verticalalignment='bottom')
 
-    # Build MLR equation với SỐ THẬT
+    # Build MLR equation HORIZONTAL — gom theo nhóm biến (Y/V/HL) trên 1 hàng
+    # mỗi nhóm thay vì xếp dọc 7 dòng (bị dính chart bar bên dưới).
     mlr_coef = np.array(r2.get('coef', []))
     mlr_intercept = float(r2.get('intercept', 0))
     if len(mlr_coef) == 3 * ar_order:
-        # Group 1: Y(t), Y(t-1)... (first ar_order)
-        # Group 2: V(t), V(t-1)... (next ar_order)
-        # Group 3: HL(t), HL(t-1)... (last ar_order)
-        # Build multi-line equation
-        lines_eq = [f'Ŷ(t+1) = {mlr_intercept:+.4f}']
-        for k in range(ar_order):
-            lines_eq.append(f'  {mlr_coef[k]:+.4e} · Y(t-{k})' if k > 0
-                            else f'  {mlr_coef[0]:+.4e} · Y(t)')
-        for k in range(ar_order):
-            lines_eq.append(f'  {mlr_coef[ar_order + k]:+.4e} · V(t-{k})' if k > 0
-                            else f'  {mlr_coef[ar_order]:+.4e} · V(t)')
-        for k in range(ar_order):
-            lines_eq.append(f'  {mlr_coef[2*ar_order + k]:+.4e} · HL(t-{k})' if k > 0
-                            else f'  {mlr_coef[2*ar_order]:+.4e} · HL(t)')
-        # Join into single line string with + between continuations
-        full_eq = lines_eq[0] + '\n' + '\n'.join(lines_eq[1:])
+        def _term(coef, var_name, lag):
+            lab = f'{var_name}(t-{lag})' if lag > 0 else f'{var_name}(t)'
+            return f'{coef:+.3e}·{lab}'
+
+        y_part  = '  '.join(_term(mlr_coef[k], 'Y', k)              for k in range(ar_order))
+        v_part  = '  '.join(_term(mlr_coef[ar_order + k], 'V', k)   for k in range(ar_order))
+        hl_part = '  '.join(_term(mlr_coef[2*ar_order + k], 'HL', k) for k in range(ar_order))
+
+        full_eq = (f'Ŷ(t+1) = {mlr_intercept:+.4f}\n'
+                   f'         {y_part}\n'
+                   f'         {v_part}\n'
+                   f'         {hl_part}')
         ax_t.text(0.08, y_mlr_start - 0.035, full_eq,
                   fontsize=7.5, color=_C_TEXT, family='DejaVu Sans Mono',
-                  transform=ax_t.transAxes, verticalalignment='top')
+                  transform=ax_t.transAxes, verticalalignment='top',
+                  linespacing=1.5)
 
     # MLR coef bar chart — below equations
     if len(mlr_coef) == 3 * ar_order:
