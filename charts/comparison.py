@@ -365,10 +365,12 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
     lang = st.session_state.get('lang', 'VI')
     label_all = 'Tất cả' if lang == 'VI' else 'All'
 
-    # 1. Giới hạn 5 năm gần nhất
+    # 1. Giới hạn data theo timeframe — ít data = render mượt hơn
+    # 1D: 3 năm (~750 bars); 1W: 5 năm; 1M/3M: 5 năm
+    _years_keep = 3 if interval == '1D' else 5
     if len(df) > 0:
         _last_date = pd.to_datetime(df['Ngay'].iloc[-1])
-        _cutoff = _last_date - pd.Timedelta(days=5 * 365)
+        _cutoff = _last_date - pd.Timedelta(days=_years_keep * 365)
         df = df[pd.to_datetime(df['Ngay']) >= _cutoff].reset_index(drop=True)
 
     # 2. Resample theo timeframe
@@ -524,20 +526,20 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
 
     fig.update_layout(
         height=700,
-        # right margin lớn hơn để vùng axis Y bên phải dễ click & drag
         margin=dict(l=30, r=70, t=50, b=30),
         paper_bgcolor=T['bg_chart'],
         plot_bgcolor=T['bg_chart'],
         font=dict(family='Inter, system-ui, sans-serif', size=11, color=T['text_primary']),
         showlegend=False,
-        hovermode='x unified',
+        # 'closest' nhẹ hơn 'x unified' — chỉ tính tooltip 1 trace gần con trỏ
+        # → giảm CPU rõ rệt khi pan/zoom với 9+ traces × ~750 bars.
+        hovermode='closest',
         hoverlabel=dict(
             bgcolor=T['bg_card'], bordercolor=T['border'],
             font_size=12, font_color=T['text_primary'],
         ),
         uirevision=f'cs_{ticker}_{interval}',
         bargap=0.15,
-        # TradingView-style: drag = pan, wheel = zoom
         dragmode='pan',
     )
 
@@ -557,8 +559,7 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
         ticks='outside', tickcolor=T['border'], ticklen=4,
         tickformat='%d/%m/%Y',
         tickfont=dict(size=10, color=T['text_muted']),
-        showspikes=True, spikecolor=T['accent'], spikemode='across',
-        spikesnap='cursor', spikedash='dot', spikethickness=1,
+        showspikes=False,
         **({'rangebreaks': _rangebreaks} if _rangebreaks else {}),
         row=2, col=1,
     )
@@ -568,8 +569,7 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
         type='date',
         showgrid=False, zeroline=False,
         showline=True, linecolor=T['border'], linewidth=1,
-        showspikes=True, spikecolor=T['accent'], spikemode='across',
-        spikesnap='cursor', spikedash='dot', spikethickness=1,
+        showspikes=False,
         rangeselector=dict(
             buttons=[
                 dict(count=1, label='1M', step='month', stepmode='backward'),
@@ -604,8 +604,7 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
         tickfont=dict(size=12, color=T['text_secondary']),
         title=None,
         side='right',
-        showspikes=True, spikecolor=T['accent'], spikemode='across',
-        spikesnap='cursor', spikedash='dot', spikethickness=1,
+        showspikes=False,
         row=1, col=1,
     )
     # Y-axis row 2 (volume)
