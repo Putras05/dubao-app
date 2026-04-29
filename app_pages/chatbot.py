@@ -327,11 +327,27 @@ def _inline_md(text: str) -> str:
     return text
 
 
+def _strip_legacy_html(text: str) -> str:
+    """Remove legacy raw-HTML blocks (`<div style="...">…</div>`) persisted vào
+    chat history TRƯỚC commit 77d484d. Message mới đã là markdown plain → regex
+    no-op. Diagram đi theo field `diagram` riêng, KHÔNG nằm trong content.
+    """
+    import re
+    if not text or '<' not in text:
+        return text
+    text = re.sub(r'<(div|span|a|section|p)\b[^>]*>.*?</\1>',
+                  '', text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r'<[^>]+/?>', '', text)
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
+
+
 def _md_to_html(text: str) -> str:
     """Convert markdown text to safe HTML using stdlib only (re + html)."""
     import re
     import html as _hlib
 
+    text = _strip_legacy_html(text)
     lines = text.split('\n')
     out = []
     in_ul = False
