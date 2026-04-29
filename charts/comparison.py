@@ -566,9 +566,10 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
         plot_bgcolor=T['bg_chart'],
         font=dict(family='Inter, system-ui, sans-serif', size=11, color=T['text_primary']),
         showlegend=False,
-        # 'closest' nhẹ hơn 'x unified' — chỉ tính tooltip 1 trace gần con trỏ
-        # → giảm CPU rõ rệt khi pan/zoom với 9+ traces × ~750 bars.
-        hovermode='closest',
+        # 'x unified' — hiển thị TẤT CẢ traces (OHLC + SMA + Ichimoku) trong
+        # 1 tooltip box khi hover tại 1 x value. User muốn thấy đầy đủ thông
+        # tin khi trỏ chuột vào chart.
+        hovermode='x unified',
         hoverlabel=dict(
             bgcolor=T['bg_card'], bordercolor=T['border'],
             font_size=12, font_color=T['text_primary'],
