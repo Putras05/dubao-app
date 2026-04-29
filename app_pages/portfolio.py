@@ -69,11 +69,21 @@ def render(ticker, train_ratio, date_from, date_to, df, r1, r2, r3, m1, m2, m3, 
 
     _kpi_cols = st.columns(4)
     _ret_ytd = {}
+    _year_start = _dt.date(_dt.date.today().year, 1, 1)
     for _tk in TICKERS:
         _d = all_data[_tk]
-        _d_year = _d[_d['Ngay'] >= _dt.date(_dt.date.today().year, 1, 1)]
-        if len(_d_year) >= 2:
-            _ret_ytd[_tk] = (_d_year['Close'].iloc[-1] / _d_year['Close'].iloc[0] - 1) * 100
+        _d_year = _d[_d['Ngay'] >= _year_start]
+        # YTD = (Close hiện tại / Close cuối năm trước) − 1.
+        # Base = phiên CUỐI CÙNG TRƯỚC năm hiện tại (close năm trước), KHÔNG
+        # phải phiên đầu năm hiện tại — tránh underestimate khi đầu năm có gap.
+        _d_prev = _d[_d['Ngay'] < _year_start]
+        if len(_d_year) >= 1 and len(_d_prev) >= 1:
+            _base = float(_d_prev['Close'].iloc[-1])
+            _now  = float(_d_year['Close'].iloc[-1])
+            _ret_ytd[_tk] = (_now / _base - 1) * 100 if _base > 0 else 0.0
+        elif len(_d_year) >= 2:
+            _ret_ytd[_tk] = (_d_year['Close'].iloc[-1] /
+                             _d_year['Close'].iloc[0] - 1) * 100
         else:
             _ret_ytd[_tk] = float(_d['Return'].sum())
     _best_tk  = max(_ret_ytd, key=_ret_ytd.get)

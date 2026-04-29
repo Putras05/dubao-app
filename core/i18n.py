@@ -199,8 +199,12 @@ TEXT = {
     # Table columns (history)
     'col.date':       {'VI': 'Ngày',          'EN': 'Date'},
     'col.close_vnd':  {'VI': 'Đóng cửa (VNĐ)', 'EN': 'Close (VND)'},
+    'col.open':       {'VI': 'Mở cửa (VNĐ)',   'EN': 'Open (VND)'},
+    'col.high':       {'VI': 'Cao nhất (VNĐ)', 'EN': 'High (VND)'},
+    'col.low':        {'VI': 'Thấp nhất (VNĐ)', 'EN': 'Low (VND)'},
     'col.ma5':        {'VI': 'MA5 (VNĐ)',      'EN': 'MA5 (VND)'},
     'col.ma20':       {'VI': 'MA20 (VNĐ)',     'EN': 'MA20 (VND)'},
+    'col.ma50':       {'VI': 'MA50 (VNĐ)',     'EN': 'MA50 (VND)'},
     'col.rsi14':      {'VI': 'RSI14',         'EN': 'RSI14'},
     'col.volume':     {'VI': 'Volume',        'EN': 'Volume'},
     'col.range':      {'VI': 'Range (VNĐ)',    'EN': 'Range (VND)'},

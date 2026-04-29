@@ -85,6 +85,7 @@ THEMES = {
 
 
 _THEME_CACHE: dict = {}
+_THEME_LOCK = __import__('threading').Lock()
 
 
 def theme() -> dict:
@@ -92,14 +93,21 @@ def theme() -> dict:
 
     `THEMES[mode].copy()` trước đây trả NEW dict mỗi lần gọi → mọi
     `@st.cache_data` nhận T làm arg đều miss cache mỗi rerun. Cache theo mode
-    để giữ same object ref.
+    để giữ same object ref. `_THEME_LOCK` bảo vệ dict mutation cho trường hợp
+    helper từ ThreadPoolExecutor (vd portfolio model load) gọi `theme()`.
     """
     mode = st.session_state.get('theme_mode', 'light')
-    if mode not in _THEME_CACHE:
-        d = THEMES[mode].copy()
-        d['is_dark'] = (mode == 'dark')
-        _THEME_CACHE[mode] = d
-    return _THEME_CACHE[mode]
+    cached = _THEME_CACHE.get(mode)
+    if cached is not None:
+        return cached
+    with _THEME_LOCK:
+        cached = _THEME_CACHE.get(mode)
+        if cached is None:
+            d = THEMES[mode].copy()
+            d['is_dark'] = (mode == 'dark')
+            _THEME_CACHE[mode] = d
+            cached = d
+    return cached
 
 
 def lighten_color(hex_color: str, amount: float = 0.3) -> str:

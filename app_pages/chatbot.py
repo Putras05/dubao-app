@@ -2389,9 +2389,15 @@ html body [data-testid="stSidebar"] [data-testid="stTextInput"] input::-webkit-i
                     from models.cart import run_cart
                     from data.metrics import calc_metrics
                     _alt_df  = fetch_data(_q_ticker, date_from, date_to)
-                    _alt_r1  = run_ar  (_q_ticker, train_ratio, p=ar_order)
-                    _alt_r2  = run_mlr (_q_ticker, train_ratio, p=ar_order)
-                    _alt_r3  = run_cart(_q_ticker, train_ratio, p=ar_order)
+                    # Pass date_from/date_to để models train trên CÙNG range
+                    # với data filter (otherwise train full history → next_pred
+                    # khác với khi user switch sidebar trực tiếp).
+                    _alt_r1  = run_ar  (_q_ticker, train_ratio, p=ar_order,
+                                        date_from=date_from, date_to=date_to)
+                    _alt_r2  = run_mlr (_q_ticker, train_ratio, p=ar_order,
+                                        date_from=date_from, date_to=date_to)
+                    _alt_r3  = run_cart(_q_ticker, train_ratio, p=ar_order,
+                                        date_from=date_from, date_to=date_to)
                     _alt_m1  = calc_metrics(_alt_r1['yte'], _alt_r1['pte'],
                                             k=ar_order)
                     _alt_m2  = calc_metrics(_alt_r2['yte'], _alt_r2['pte'],
