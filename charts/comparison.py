@@ -598,25 +598,29 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
     # Y-axis row 1 (price) — drag/scroll trên thanh để zoom Y (TradingView style)
     fig.update_yaxes(
         range=_yrange_price,
-        fixedrange=False,  # cho phép drag thanh price để zoom Y
+        fixedrange=False,
+        automargin=True,
         showgrid=True, gridcolor=T['grid'], gridwidth=1,
-        zeroline=False, showline=False, ticks='',
+        zeroline=False, showline=False,
+        ticks='outside', tickcolor=T['border'], ticklen=6,
         tickformat=',.1f',
-        tickfont=dict(size=10, color=T['text_muted']),
+        tickfont=dict(size=11, color=T['text_muted']),
         title=None,
-        side='right',  # price scale ở bên phải giống TradingView
+        side='right',
         showspikes=True, spikecolor=T['accent'], spikemode='across',
         spikesnap='cursor', spikedash='dot', spikethickness=1,
         row=1, col=1,
     )
-    # Y-axis row 2 (volume) — compact, drag được
+    # Y-axis row 2 (volume)
     fig.update_yaxes(
         range=_yrange_volume,
         fixedrange=False,
+        automargin=True,
         showgrid=True, gridcolor=T['grid'], gridwidth=1,
-        zeroline=False, showline=False, ticks='',
-        tickformat='.2s',  # 1.2k, 3.4M
-        tickfont=dict(size=9, color=T['text_muted']),
+        zeroline=False, showline=False,
+        ticks='outside', tickcolor=T['border'], ticklen=6,
+        tickformat='.2s',
+        tickfont=dict(size=10, color=T['text_muted']),
         title=dict(text='Volume', font=dict(size=10, color=T['text_muted']), standoff=8),
         side='right',
         row=2, col=1,

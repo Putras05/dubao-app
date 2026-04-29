@@ -19,6 +19,89 @@ from charts.comparison import chart_price_candlestick, render_candlestick_info_b
 from charts.base import _PLOTLY_CONFIG
 
 
+@st.fragment
+def _candlestick_section(df, ticker, _T, _is_en_cmp):
+    """Toggle/zoom chart KHÔNG rerun toàn page — chỉ rerun fragment này.
+
+    Streamlit 1.32+ st.fragment isolates reruns — đổi SMA/Ichimoku/Timeframe
+    không gọi lại render() cha (KPI, forecast cards). Cảm giác instant.
+    """
+    _tf_col, _sma_col, _ichi_col = st.columns([3, 1, 1])
+    with _tf_col:
+        _tf_label = 'Khung thời gian' if not _is_en_cmp else 'Timeframe'
+        _selected_tf = st.segmented_control(
+            _tf_label,
+            options=['1D', '1W', '1M', '3M'],
+            default='1D',
+            key=f'cs_tf_{ticker}',
+            label_visibility='collapsed',
+        )
+    with _sma_col:
+        _show_sma = st.toggle(
+            'SMA 5/20', value=True, key=f'cs_sma_{ticker}',
+            help=('Hiển thị 2 đường trung bình động SMA 5 (cam) & SMA 20 (tím)'
+                  if not _is_en_cmp else
+                  'Show SMA 5 (orange) & SMA 20 (purple) moving averages'),
+        )
+    with _ichi_col:
+        _show_ichimoku = st.toggle(
+            'Ichimoku', value=False, key=f'cs_ichi_{ticker}',
+            help=('Hiển thị Tenkan, Kijun, Mây Kumo, Chikou (cần ≥30 phiên)'
+                  if not _is_en_cmp else
+                  'Show Tenkan, Kijun, Kumo cloud, Chikou (needs ≥30 bars)'),
+        )
+    if _selected_tf is None:
+        _selected_tf = '1D'
+
+    if _show_ichimoku and _selected_tf == '3M':
+        st.caption(
+            'ℹ️ Khung 3M có ≤20 phiên — Ichimoku chỉ hiển thị một phần.'
+            if not _is_en_cmp else
+            'ℹ️ 3M timeframe has ≤20 bars — Ichimoku will be partial.'
+        )
+
+    _cmp_hint = (
+        'Đơn vị giá: <b>nghìn đ</b> · Chọn khung thời gian <b>1D/1W/1M/3M</b> · '
+        'Nến <span style="color:#10B981">xanh</span> = tăng, '
+        '<span style="color:#EF4444">đỏ</span> = giảm · '
+        'Đường <span style="color:#F59E0B">SMA 5</span> & '
+        '<span style="color:#8B5CF6">SMA 20</span> · '
+        'Kéo <b>thanh price bên phải</b> để zoom giá.'
+        if not _is_en_cmp else
+        'Price unit: <b>k VND</b> · Pick timeframe <b>1D/1W/1M/3M</b> · '
+        '<span style="color:#10B981">Green</span> = up, '
+        '<span style="color:#EF4444">red</span> = down · '
+        '<span style="color:#F59E0B">SMA 5</span> & '
+        '<span style="color:#8B5CF6">SMA 20</span> overlays · '
+        'Drag <b>right price scale</b> to zoom price.'
+    )
+    st.markdown(
+        f'<div style="font-size:11px;color:{_T["text_muted"]};margin:-4px 0 6px;'
+        f'line-height:1.5">{_cmp_hint}</div>',
+        unsafe_allow_html=True,
+    )
+
+    _info_bar = render_candlestick_info_bar(df, ticker, _selected_tf, _T)
+    if _info_bar:
+        st.markdown(_info_bar, unsafe_allow_html=True)
+
+    try:
+        fig_cmp = chart_price_candlestick(
+            df, ticker, _T,
+            interval=_selected_tf,
+            show_sma=_show_sma,
+            show_ichimoku=_show_ichimoku,
+        )
+        _candle_config = {
+            **_PLOTLY_CONFIG,
+            'scrollZoom': True,
+            'doubleClick': 'reset',
+        }
+        st.plotly_chart(fig_cmp, use_container_width=True, config=_candle_config)
+    except Exception as _e:
+        st.error(f'Chart error: {_e}')
+
+
 def render(ticker, train_ratio, date_from, date_to, df, r1, r2, r3, m1, m2, m3, _T,
            ar_order=1):
     col_t = CLR[ticker]
@@ -398,89 +481,8 @@ def render(ticker, train_ratio, date_from, date_to, df, r1, r2, r3, m1, m2, m3, 
     st.markdown(f'<div class="sec-hdr">{t("dash.comparison")}</div>', unsafe_allow_html=True)
     _is_en_cmp = st.session_state.get('lang', 'VI') == 'EN'
 
-    # Timeframe selector (1D / 1W / 1M / 3M) + SMA toggle + Ichimoku toggle
-    _tf_col, _sma_col, _ichi_col = st.columns([3, 1, 1])
-    with _tf_col:
-        _tf_label = 'Khung thời gian' if not _is_en_cmp else 'Timeframe'
-        _tf_options = ['1D', '1W', '1M', '3M']
-        _selected_tf = st.segmented_control(
-            _tf_label,
-            options=_tf_options,
-            default='1D',
-            key=f'cs_tf_{ticker}',
-            label_visibility='collapsed',
-        )
-    with _sma_col:
-        _show_sma = st.toggle(
-            'SMA 5/20',
-            value=True,
-            key=f'cs_sma_{ticker}',
-            help=('Hiển thị 2 đường trung bình động SMA 5 (cam) & SMA 20 (tím)'
-                  if not _is_en_cmp else
-                  'Show SMA 5 (orange) & SMA 20 (purple) moving averages'),
-        )
-    with _ichi_col:
-        _show_ichimoku = st.toggle(
-            'Ichimoku',
-            value=False,
-            key=f'cs_ichi_{ticker}',
-            help=('Hiển thị Tenkan, Kijun, Mây Kumo, Chikou (cần ≥30 phiên)'
-                  if not _is_en_cmp else
-                  'Show Tenkan, Kijun, Kumo cloud, Chikou (needs ≥30 bars)'),
-        )
-    if _selected_tf is None:
-        _selected_tf = '1D'
-
-    # Cảnh báo nếu Ichimoku bật mà timeframe có ít data (3M = ~20 quarters)
-    if _show_ichimoku and _selected_tf == '3M':
-        st.caption(
-            'ℹ️ Khung 3M có ≤20 phiên — Ichimoku chỉ hiển thị một phần.'
-            if not _is_en_cmp else
-            'ℹ️ 3M timeframe has ≤20 bars — Ichimoku will be partial.'
-        )
-
-    _cmp_hint = (
-        'Đơn vị giá: <b>nghìn đ</b> · Chọn khung thời gian <b>1D/1W/1M/3M</b> · '
-        'Nến <span style="color:#10B981">xanh</span> = tăng, '
-        '<span style="color:#EF4444">đỏ</span> = giảm · '
-        'Đường <span style="color:#F59E0B">SMA 5</span> & '
-        '<span style="color:#8B5CF6">SMA 20</span> · '
-        'Kéo <b>thanh dưới</b> để xem lịch sử.'
-        if not _is_en_cmp else
-        'Price unit: <b>k VND</b> · Pick timeframe <b>1D/1W/1M/3M</b> · '
-        '<span style="color:#10B981">Green</span> = up, '
-        '<span style="color:#EF4444">red</span> = down · '
-        '<span style="color:#F59E0B">SMA 5</span> & '
-        '<span style="color:#8B5CF6">SMA 20</span> overlays · '
-        'Drag <b>bottom slider</b> to scroll history.'
-    )
-    st.markdown(
-        f'<div style="font-size:11px;color:{_T["text_muted"]};margin:-4px 0 6px;'
-        f'line-height:1.5">{_cmp_hint}</div>',
-        unsafe_allow_html=True,
-    )
-
-    # Info bar OHLC + SMA giống TradingView
-    _info_bar = render_candlestick_info_bar(df, ticker, _selected_tf, _T)
-    if _info_bar:
-        st.markdown(_info_bar, unsafe_allow_html=True)
-
-    try:
-        fig_cmp = chart_price_candlestick(
-            df, ticker, _T,
-            interval=_selected_tf,
-            show_sma=_show_sma,
-            show_ichimoku=_show_ichimoku,
-        )
-        # Candlestick: bật scroll wheel zoom + double-click reset (UX TradingView)
-        _candle_config = {
-            **_PLOTLY_CONFIG,
-            'scrollZoom': True,
-            'doubleClick': 'reset',
-        }
-        st.plotly_chart(fig_cmp, use_container_width=True, config=_candle_config)
-    except Exception as _e:
-        st.error(f'Chart error: {_e}')
+    # Chart trong fragment → toggle/timeframe đổi KHÔNG rerun KPI/forecast
+    _candlestick_section(df, ticker, _T, _is_en_cmp)
 
     st.markdown("<div style='margin:12px 0 8px'></div>", unsafe_allow_html=True)
     st.markdown(f'<div class="sec-hdr">{t("dash.rank")}</div>', unsafe_allow_html=True)
