@@ -425,49 +425,53 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
         sb = df['Senkou_B']
         _bull_mask = sa >= sb
 
-        # Mây XANH (bull): A>=B → fill từ B lên A màu xanh
+        # Mây XANH (bull) — connectgaps=False để fill stop tại NaN, không bridge
         fig.add_trace(go.Scatter(
             x=dates, y=sb.where(_bull_mask).values,
             mode='lines', line=dict(width=0, color='rgba(0,0,0,0)'),
+            connectgaps=False,
             legendgroup='ichimoku', showlegend=False, hoverinfo='skip',
         ), row=1, col=1)
         fig.add_trace(go.Scatter(
             x=dates, y=sa.where(_bull_mask).values,
             mode='lines', line=dict(width=0, color='rgba(0,0,0,0)'),
-            fill='tonexty', fillcolor='rgba(34,197,94,0.45)',
+            fill='tonexty', fillcolor='rgba(16,185,129,0.55)',
+            connectgaps=False,
             legendgroup='ichimoku', showlegend=False, hoverinfo='skip',
         ), row=1, col=1)
 
-        # Mây ĐỎ (bear): A<B → fill từ A lên B màu đỏ
+        # Mây ĐỎ (bear)
         fig.add_trace(go.Scatter(
             x=dates, y=sa.where(~_bull_mask).values,
             mode='lines', line=dict(width=0, color='rgba(0,0,0,0)'),
+            connectgaps=False,
             legendgroup='ichimoku', showlegend=False, hoverinfo='skip',
         ), row=1, col=1)
         fig.add_trace(go.Scatter(
             x=dates, y=sb.where(~_bull_mask).values,
             mode='lines', line=dict(width=0, color='rgba(0,0,0,0)'),
-            fill='tonexty', fillcolor='rgba(220,38,38,0.45)',
+            fill='tonexty', fillcolor='rgba(239,68,68,0.55)',
+            connectgaps=False,
             legendgroup='ichimoku', showlegend=False, hoverinfo='skip',
         ), row=1, col=1)
 
-        # Tenkan / Kijun / Chikou — KHÔNG vẽ Senkou A/B viền vì cloud fill
-        # đã có màu xanh/đỏ rõ; viền thêm chỉ tạo overlap nâu khi cross.
+        # Tenkan / Kijun / Chikou — đổi màu KHÁC với cloud red để tránh blend
+        # thành vùng nâu/xám khi line crossing cloud cùng màu.
         fig.add_trace(go.Scatter(
             x=dates, y=df['Tenkan'].values, mode='lines', name='Tenkan',
-            line=dict(color='#EF4444', width=1.2),
+            line=dict(color='#F97316', width=1),  # cam — phân biệt với cloud red
             legendgroup='ichimoku', showlegend=False,
             hovertemplate='Tenkan: %{y:,.2f}<extra></extra>',
         ), row=1, col=1)
         fig.add_trace(go.Scatter(
             x=dates, y=df['Kijun'].values, mode='lines', name='Kijun',
-            line=dict(color='#3B82F6', width=1.2),
+            line=dict(color='#0EA5E9', width=1),  # cyan — phân biệt với cloud
             legendgroup='ichimoku', showlegend=False,
             hovertemplate='Kijun: %{y:,.2f}<extra></extra>',
         ), row=1, col=1)
         fig.add_trace(go.Scatter(
             x=dates, y=df['Chikou'].values, mode='lines', name='Chikou',
-            line=dict(color='#A855F7', width=1, dash='dot'),
+            line=dict(color='#A855F7', width=0.9, dash='dot'),  # tím nhạt
             legendgroup='ichimoku', showlegend=False,
             hovertemplate='Chikou: %{y:,.2f}<extra></extra>',
         ), row=1, col=1)
