@@ -230,11 +230,14 @@ def inject_theme_js(T: dict) -> None:
     [50, 150, 400, 900, 2000].forEach(function(ms) {{ setTimeout(applyAll, ms); }});
     [100, 300, 700, 1500].forEach(function(ms) {{ setTimeout(fixSidebarWidgets, ms); }});
 
-    // Bỏ MutationObserver — initial burst (5 setTimeout tới 2s) đủ phủ
-    // late-rendering widgets. Hover handlers idempotent qua flag _evt/_dlEvt
-    // nên widget mới sau 2s vẫn được style ở rerun kế tiếp. Observer chạy
-    // permanent gây jank rất nặng khi Plotly pan/zoom (mỗi mouse move = N
-    // mutations → applyAll() iterate ~10 selectors × hundreds nodes).
+    // MutationObserver scoped vào BODY với debounce dài (500ms) — đủ để
+    // re-style iframe option_menu khi Streamlit rerun (mất CSS sidebar nav)
+    // mà không gây jank khi Plotly pan/zoom (rất nhiều mutations/giây).
+    var _debounce;
+    new MutationObserver(function() {{
+        clearTimeout(_debounce);
+        _debounce = setTimeout(applyAll, 500);
+    }}).observe(doc.body, {{ childList: true, subtree: true }});
 }})();
 </script>
 """, height=0, scrolling=False)
