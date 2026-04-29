@@ -439,7 +439,13 @@ def render(ticker, train_ratio, date_from, date_to, df, r1, r2, r3, m1, m2, m3, 
 
     try:
         fig_cmp = chart_price_candlestick(df, ticker, _T, interval=_selected_tf)
-        st.plotly_chart(fig_cmp, use_container_width=True, config=_PLOTLY_CONFIG)
+        # Candlestick: bật scroll wheel zoom + double-click reset (UX TradingView)
+        _candle_config = {
+            **_PLOTLY_CONFIG,
+            'scrollZoom': True,
+            'doubleClick': 'reset',
+        }
+        st.plotly_chart(fig_cmp, use_container_width=True, config=_candle_config)
     except Exception as _e:
         st.error(f'Chart error: {_e}')
 
