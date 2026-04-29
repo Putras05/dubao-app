@@ -427,7 +427,7 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
         fig.add_trace(go.Scatter(
             x=dates, y=df['Senkou_B'].values, mode='lines', name='Senkou B',
             line=dict(color='rgba(239,68,68,0.45)', width=1),
-            fill='tonexty', fillcolor='rgba(124,131,201,0.10)',
+            fill='tonexty', fillcolor='rgba(124,131,201,0.20)',
             legendgroup='ichimoku',
             hovertemplate='Senkou B: %{y:,.2f}<extra></extra>',
         ), row=1, col=1)
@@ -480,11 +480,28 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
     else:
         _xaxis_range = None
 
+    # 6.5. Fit Y-axis theo visible window — Plotly auto-Y dùng TOÀN BỘ data
+    # nên với explicit X range, price sẽ bị squash. Tự tính Y range cho window.
+    _yrange_price = None
+    _yrange_volume = None
+    if _xaxis_range is not None and len(df) > 0:
+        _mask = (dates >= _xaxis_range[0]) & (dates <= _xaxis_range[1])
+        _vis = df.loc[_mask.values]
+        if len(_vis) > 0:
+            _lo = float(_vis['Low'].min())
+            _hi = float(_vis['High'].max())
+            _pad = (_hi - _lo) * 0.08 if _hi > _lo else _hi * 0.02
+            _yrange_price = [_lo - _pad, _hi + _pad]
+            if 'Volume' in _vis.columns:
+                _vmax = float(_vis['Volume'].max())
+                if _vmax > 0:
+                    _yrange_volume = [0, _vmax * 1.15]
+
     # 7. Rangebreaks chỉ áp dụng cho 1D
     _rangebreaks = [dict(bounds=['sat', 'mon'])] if interval == '1D' else None
 
     fig.update_layout(
-        height=600,
+        height=700,
         margin=dict(l=50, r=30, t=50, b=30),
         paper_bgcolor=T['bg_chart'],
         plot_bgcolor=T['bg_chart'],
@@ -547,8 +564,9 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
         row=1, col=1,
     )
 
-    # Y-axis row 1 (price)
+    # Y-axis row 1 (price) — set explicit range theo visible window để nến không bị squash
     fig.update_yaxes(
+        range=_yrange_price,
         showgrid=True, gridcolor=T['grid'], gridwidth=1,
         zeroline=False, showline=False, ticks='',
         tickformat=',.1f',
@@ -558,8 +576,9 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
         spikesnap='cursor', spikedash='dot', spikethickness=1,
         row=1, col=1,
     )
-    # Y-axis row 2 (volume) — compact
+    # Y-axis row 2 (volume) — compact, range theo visible window
     fig.update_yaxes(
+        range=_yrange_volume,
         showgrid=True, gridcolor=T['grid'], gridwidth=1,
         zeroline=False, showline=False, ticks='',
         tickformat='.2s',  # 1.2k, 3.4M
