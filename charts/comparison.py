@@ -420,41 +420,67 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
 
     # ── Row 1: Ichimoku Cloud (vẽ TRƯỚC SMA để cloud nằm dưới) ──────────
     if show_ichimoku and 'Tenkan' in df.columns:
-        # Senkou A (line ranh giới trên/dưới mây) + B (fill thành mây)
+        sa = df['Senkou_A']
+        sb = df['Senkou_B']
+        _bull_mask = sa >= sb
+
+        # Mây XANH (bull): A>=B → fill từ B lên A màu xanh
         fig.add_trace(go.Scatter(
-            x=dates, y=df['Senkou_A'].values, mode='lines', name='Senkou A',
-            line=dict(color='rgba(16,185,129,0.45)', width=1),
-            legendgroup='ichimoku',
-            showlegend=False,
+            x=dates, y=sb.where(_bull_mask).values,
+            mode='lines', line=dict(width=0, color='rgba(0,0,0,0)'),
+            legendgroup='ichimoku', showlegend=False, hoverinfo='skip',
+        ), row=1, col=1)
+        fig.add_trace(go.Scatter(
+            x=dates, y=sa.where(_bull_mask).values,
+            mode='lines', line=dict(width=0, color='rgba(0,0,0,0)'),
+            fill='tonexty', fillcolor='rgba(16,185,129,0.25)',
+            legendgroup='ichimoku', showlegend=False, hoverinfo='skip',
+        ), row=1, col=1)
+
+        # Mây ĐỎ (bear): A<B → fill từ A lên B màu đỏ
+        fig.add_trace(go.Scatter(
+            x=dates, y=sa.where(~_bull_mask).values,
+            mode='lines', line=dict(width=0, color='rgba(0,0,0,0)'),
+            legendgroup='ichimoku', showlegend=False, hoverinfo='skip',
+        ), row=1, col=1)
+        fig.add_trace(go.Scatter(
+            x=dates, y=sb.where(~_bull_mask).values,
+            mode='lines', line=dict(width=0, color='rgba(0,0,0,0)'),
+            fill='tonexty', fillcolor='rgba(239,68,68,0.25)',
+            legendgroup='ichimoku', showlegend=False, hoverinfo='skip',
+        ), row=1, col=1)
+
+        # Senkou A & B viền (vẽ chồng lên cloud)
+        fig.add_trace(go.Scatter(
+            x=dates, y=sa.values, mode='lines', name='Senkou A',
+            line=dict(color='rgba(16,185,129,0.65)', width=1),
+            legendgroup='ichimoku', showlegend=False,
             hovertemplate='Senkou A: %{y:,.2f}<extra></extra>',
         ), row=1, col=1)
         fig.add_trace(go.Scatter(
-            x=dates, y=df['Senkou_B'].values, mode='lines', name='Senkou B',
-            line=dict(color='rgba(239,68,68,0.45)', width=1),
-            fill='tonexty', fillcolor='rgba(124,131,201,0.20)',
-            legendgroup='ichimoku',
-            showlegend=False,
+            x=dates, y=sb.values, mode='lines', name='Senkou B',
+            line=dict(color='rgba(239,68,68,0.65)', width=1),
+            legendgroup='ichimoku', showlegend=False,
             hovertemplate='Senkou B: %{y:,.2f}<extra></extra>',
         ), row=1, col=1)
+
+        # Tenkan / Kijun / Chikou
         fig.add_trace(go.Scatter(
             x=dates, y=df['Tenkan'].values, mode='lines', name='Tenkan',
             line=dict(color='#EF4444', width=1.2),
-            legendgroup='ichimoku',
-            showlegend=False,
+            legendgroup='ichimoku', showlegend=False,
             hovertemplate='Tenkan: %{y:,.2f}<extra></extra>',
         ), row=1, col=1)
         fig.add_trace(go.Scatter(
             x=dates, y=df['Kijun'].values, mode='lines', name='Kijun',
             line=dict(color='#3B82F6', width=1.2),
-            legendgroup='ichimoku',
-            showlegend=False,
+            legendgroup='ichimoku', showlegend=False,
             hovertemplate='Kijun: %{y:,.2f}<extra></extra>',
         ), row=1, col=1)
         fig.add_trace(go.Scatter(
             x=dates, y=df['Chikou'].values, mode='lines', name='Chikou',
             line=dict(color='#A855F7', width=1, dash='dot'),
-            legendgroup='ichimoku',
-            showlegend=False,
+            legendgroup='ichimoku', showlegend=False,
             hovertemplate='Chikou: %{y:,.2f}<extra></extra>',
         ), row=1, col=1)
 
