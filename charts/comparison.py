@@ -347,6 +347,18 @@ def _resample_ohlc(df: pd.DataFrame, freq: str | None) -> pd.DataFrame:
     return out
 
 
+@st.cache_data(
+    show_spinner=False, max_entries=64, ttl=600,
+    hash_funcs={
+        # df: hash O(1) qua fingerprint (first_date, last_date, len, last_close)
+        pd.DataFrame: lambda d: (str(d['Ngay'].iloc[0]) if len(d) else 'empty',
+                                  str(d['Ngay'].iloc[-1]) if len(d) else 'empty',
+                                  int(len(d)),
+                                  float(d['Close'].iloc[-1]) if len(d) else 0.0),
+        # T: dict không hashable native; theme() cache same id → id() stable
+        dict: lambda T: id(T),
+    },
+)
 def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
                             interval: str = '1D',
                             show_sma: bool = True,

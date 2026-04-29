@@ -188,6 +188,7 @@ def _detect_navigation_intent(query: str) -> str:
 
 
 def _render_nav_hint(target_page: str, T: dict) -> str:
+    """Trả markdown plain — pipe qua _md_to_html escape an toàn (không HTML raw)."""
     _page_icons = {
         'Dashboard Tổng quan':  '◉',
         'Phân tích Chi tiết':   '◈',
@@ -196,21 +197,10 @@ def _render_nav_hint(target_page: str, T: dict) -> str:
         'Danh mục Đầu tư':      '◐',
     }
     _icon_char = _page_icons.get(target_page, '→')
-    _accent = T.get('accent', '#1565C0')
     return (
-        f'<div style="margin:14px 0 4px;padding:12px 16px;'
-        f'background:linear-gradient(90deg,rgba(21,101,192,0.06) 0%,rgba(21,101,192,0) 100%);'
-        f'border-left:3px solid {_accent};border-radius:6px;'
-        f'display:flex;align-items:center;gap:10px">'
-        f'<span style="font-size:18px;color:{_accent}">{_icon_char}</span>'
-        f'<div style="flex:1">'
-        f'<div style="font-size:10px;font-weight:800;letter-spacing:1px;'
-        f'color:{_accent};text-transform:uppercase">Gợi ý trang phù hợp</div>'
-        f'<div style="font-size:13px;font-weight:600;color:{T["text_primary"]};margin-top:2px">'
-        f'{target_page}</div>'
-        f'<div style="font-size:11px;color:{T["text_muted"]};margin-top:2px">'
-        f'Chọn ở menu bên trái để xem chi tiết</div>'
-        f'</div></div>'
+        f'\n---\n'
+        f'**{_icon_char} Gợi ý trang phù hợp:** {target_page}\n\n'
+        f'_Chọn ở menu bên trái để xem chi tiết._'
     )
 
 
