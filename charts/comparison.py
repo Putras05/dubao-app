@@ -325,9 +325,20 @@ def chart_test_result_plotly(res: dict, ticker: str, method: str,
     return fig
 
 def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict) -> go.Figure:
-    """Candlestick chart kiểu TradingView — pan/zoom xem toàn bộ lịch sử OHLC."""
+    """Candlestick chart kiểu TradingView — pan/zoom 5 năm gần nhất.
+
+    Giới hạn 5 năm để Plotly render mượt (1260 nến vs 3500+). Default zoom
+    1 tháng cuối → mỗi nến ~60px. Có rangeselector + rangeslider để pan/zoom.
+    """
     is_dark = T.get('is_dark', False)
     lang = st.session_state.get('lang', 'VI')
+
+    # Giới hạn 5 năm gần nhất → app mượt hơn nhiều (rangeslider không phải
+    # render 3500+ nến trong mini view).
+    if len(df) > 0:
+        _last_date = pd.to_datetime(df['Ngay'].iloc[-1])
+        _cutoff = _last_date - pd.Timedelta(days=5 * 365)
+        df = df[pd.to_datetime(df['Ngay']) >= _cutoff].reset_index(drop=True)
 
     dates = pd.to_datetime(df['Ngay'])
 
@@ -353,10 +364,11 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict) -> go.Figure
         showlegend=False,
     )])
 
+    # Default zoom = 1 tháng cuối → nến to ~60px, rõ ràng
     if len(dates) > 0:
         _last = dates.iloc[-1]
-        _start_3m = _last - pd.Timedelta(days=90)
-        _xaxis_range = [_start_3m, _last + pd.Timedelta(days=2)]
+        _start_default = _last - pd.Timedelta(days=30)
+        _xaxis_range = [_start_default, _last + pd.Timedelta(days=2)]
     else:
         _xaxis_range = None
 
@@ -372,6 +384,7 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict) -> go.Figure
             bgcolor=T['bg_card'], bordercolor=T['border'],
             font_size=12, font_color=T['text_primary'],
         ),
+        uirevision=f'candlestick_{ticker}',
         xaxis=dict(
             range=_xaxis_range,
             type='date',
@@ -402,7 +415,7 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict) -> go.Figure
                 bgcolor=T['bg_card'],
                 bordercolor=T['border'],
                 borderwidth=1,
-                thickness=0.07,
+                thickness=0.04,
             ),
             rangebreaks=[dict(bounds=['sat', 'mon'])],
         ),
