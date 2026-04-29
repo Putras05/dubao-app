@@ -1419,6 +1419,8 @@ html body [data-testid="stMain"] button[kind="secondary"] {{
     font-weight: 600 !important;
     transition: all .14s !important;
     box-shadow: 0 1px 3px rgba(0,0,0,.10) !important;
+    user-select: none !important;
+    -webkit-user-select: none !important;
 }}
 html body [data-testid="stMain"] div[data-testid="stButton"] button *,
 html body [data-testid="stMain"] div.stButton button *,
@@ -1451,34 +1453,38 @@ html body [data-testid="stMain"] button[kind="secondary"]:hover * {{
     color: {_btn_hov_fg} !important;
 }}
 
-/* PRIMARY: "Cuộc trò chuyện mới" + active conversation */
+/* PRIMARY: "Cuộc trò chuyện mới" + active conversation
+   Style softer (KHÔNG solid blue) — bg như secondary + viền đậm + text accent.
+   Cả light/dark đều đọc rõ chữ, không bị "dính" highlight xanh đậm. */
 html body [data-testid="stMain"] button[data-testid="stBaseButton-primary"],
 html body [data-testid="stMain"] button[data-testid="baseButton-primary"],
 html body [data-testid="stMain"] button[kind="primary"] {{
-    background-color: {_accent} !important;
-    background: {_accent} !important;
+    background-color: {_btn_bg} !important;
+    background: {_btn_bg} !important;
     background-image: none !important;
-    color: #FFFFFF !important;
-    border: 1px solid {_accent} !important;
+    color: {_accent} !important;
+    border: 2px solid {_accent} !important;
     border-radius: 8px !important;
     font-weight: 700 !important;
-    box-shadow: 0 2px 6px rgba(0,0,0,.15) !important;
+    box-shadow: 0 2px 6px rgba(0,0,0,.10) !important;
+    user-select: none !important;
+    -webkit-user-select: none !important;
 }}
 html body [data-testid="stMain"] button[data-testid="stBaseButton-primary"] *,
 html body [data-testid="stMain"] button[data-testid="baseButton-primary"] *,
 html body [data-testid="stMain"] button[kind="primary"] * {{
-    color: #FFFFFF !important;
+    color: {_accent} !important;
     background: transparent !important;
 }}
 html body [data-testid="stMain"] button[data-testid="stBaseButton-primary"]:hover,
 html body [data-testid="stMain"] button[data-testid="baseButton-primary"]:hover,
 html body [data-testid="stMain"] button[kind="primary"]:hover {{
-    background-color: {_accent_hov} !important;
-    background: {_accent_hov} !important;
+    background-color: {_accent} !important;
+    background: {_accent} !important;
     color: #FFFFFF !important;
-    border-color: {_accent_hov} !important;
+    border-color: {_accent} !important;
     transform: translateY(-1px) !important;
-    box-shadow: 0 4px 12px rgba(0,0,0,.25) !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,.20) !important;
 }}
 html body [data-testid="stMain"] button[data-testid="stBaseButton-primary"]:hover *,
 html body [data-testid="stMain"] button[data-testid="baseButton-primary"]:hover *,
