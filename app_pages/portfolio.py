@@ -2,7 +2,6 @@ import streamlit as st
 import datetime as _dt
 import numpy as np
 import pandas as pd
-import plotly.graph_objects as go
 
 from core.i18n import t
 from core.constants import TICKERS, CLR, get_clr
@@ -12,7 +11,7 @@ from models.ar   import run_ar
 from models.mlr  import run_mlr
 from models.cart import run_cart
 from ui.components import sparkline_svg
-from charts.portfolio import chart_portfolio_compare_plotly, chart_correlation_plotly
+from charts.portfolio import chart_portfolio_compare_plotly
 from charts.base import _PLOTLY_CONFIG
 
 
@@ -286,54 +285,5 @@ def render(ticker, train_ratio, date_from, date_to, df, r1, r2, r3, m1, m2, m3, 
 </table></div>
 """, unsafe_allow_html=True)
 
-    _col_corr2, _col_vol2 = st.columns([1, 1])
-
-    with _col_corr2:
-        st.markdown(f'<div class="sec-hdr" style="margin-top:20px">{t("portfolio.corr_hdr")}</div>',
-                    unsafe_allow_html=True)
-        ret_dict = {}
-        for tk in TICKERS:
-            d = all_data[tk][['Ngay', 'Return']].dropna().rename(columns={'Return': tk})
-            s = d.set_index('Ngay')[tk]
-            s = s[~s.index.duplicated(keep='last')]
-            ret_dict[tk] = s
-        ret_df = pd.concat(ret_dict, axis=1).dropna()
-        corr     = ret_df.corr()
-        fig_corr = chart_correlation_plotly(corr, T=_T)
-        fig_corr.update_layout(height=480, margin=dict(l=60, r=30, t=70, b=50))
-        st.plotly_chart(fig_corr, use_container_width=True, config=_PLOTLY_CONFIG)
-
-    with _col_vol2:
-        st.markdown(f'<div class="sec-hdr" style="margin-top:20px">{t("portfolio.vol_hdr")}</div>',
-                    unsafe_allow_html=True)
-        stds     = [all_data[tk]['Return'].std() for tk in TICKERS]
-        _vol_cls = [get_clr(_T)[tk] for tk in TICKERS]
-        fig_vol  = go.Figure()
-        fig_vol.add_trace(go.Bar(
-            x=TICKERS, y=stds,
-            marker=dict(color=_vol_cls, opacity=0.88, line=dict(width=0)),
-            text=[f'{v:.3f}%' for v in stds],
-            textposition='outside',
-            textfont=dict(size=13, color=_T['text_primary'], family='Inter'),
-            hovertemplate='<b>%{x}</b><br>Std Dev: %{y:.3f}%<extra></extra>',
-            showlegend=False,
-            width=0.38,
-        ))
-        fig_vol.update_layout(
-            title=dict(text=t('chart.daily_vol'), x=0.5, xanchor='center',
-                       font=dict(size=13, color=_T['text_primary'])),
-            height=480,
-            margin=dict(l=65, r=30, t=70, b=55),
-            paper_bgcolor=_T['bg_card'], plot_bgcolor=_T['bg_card'],
-            font=dict(family='Inter', color=_T['text_primary']),
-            xaxis=dict(showgrid=False, showline=True, linecolor=_T['border'],
-                       tickfont=dict(size=14, color=_T['text_primary'], family='Inter'),
-                       range=[-0.5, len(TICKERS) - 0.5]),
-            yaxis=dict(showgrid=True, gridcolor=_T['grid'],
-                       tickfont=dict(size=10, color=_T['text_muted']),
-                       title=dict(text=t('chart.std_return'),
-                                  font=dict(size=11, color=_T['text_secondary'])),
-                       range=[0, max(stds) * 1.40]),
-            bargap=0.50,
-        )
-        st.plotly_chart(fig_vol, use_container_width=True, config=_PLOTLY_CONFIG)
+    # Đã bỏ 2 chart "Ma trận tương quan return" và "Độ lệch chuẩn return hàng ngày"
+    # theo yêu cầu user — bảng số liệu phía trên đã đủ thông tin tổng quan.
