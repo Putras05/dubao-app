@@ -538,16 +538,17 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
             bgcolor=T['bg_card'], bordercolor=T['border'],
             font_size=12, font_color=T['text_primary'],
         ),
-        uirevision=f'cs_{ticker}_{interval}',
+        uirevision=f'cs_{ticker}',
         bargap=0.15,
         dragmode='pan',
     )
 
-    # axis-level uirevision: Plotly preserve user zoom/pan trên từng axis
-    # khi figure rebuild (vd toggle SMA/Ichimoku) → không reset về initial range.
-    _x_uirev = f'x_{ticker}_{interval}'
-    _y_price_uirev = f'yp_{ticker}_{interval}'
-    _y_vol_uirev = f'yv_{ticker}_{interval}'
+    # axis-level uirevision: CỐ ĐỊNH theo ticker (KHÔNG đổi theo interval)
+    # → Plotly giữ user zoom/pan, không recompute autorange + relayout mỗi
+    # khi đổi timeframe/toggle. Tăng tốc pan/zoom rõ rệt.
+    _x_uirev = f'x_{ticker}'
+    _y_price_uirev = f'yp_{ticker}'
+    _y_vol_uirev = f'yv_{ticker}'
 
     # X-axis chính (row 2, vì shared) — rangeselector đặt trên row 1
     fig.update_xaxes(

@@ -136,11 +136,13 @@ def _candlestick_section(df, ticker, _T, _is_en_cmp):
             'doubleClick': 'reset',
         }
         # key= → Streamlit persist UI state (zoom/pan) khi toggle SMA/Ichimoku
+        # key CỐ ĐỊNH theo ticker (KHÔNG đổi theo timeframe) — Streamlit/Plotly
+        # giữ component thay vì destroy+remount → pan/zoom mượt hơn rất nhiều.
         st.plotly_chart(
             fig_cmp,
             use_container_width=True,
             config=_candle_config,
-            key=f'candlestick_chart_{ticker}_{_selected_tf}',
+            key=f'candlestick_chart_{ticker}',
         )
     except Exception as _e:
         st.error(f'Chart error: {_e}')
