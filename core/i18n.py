@@ -562,8 +562,8 @@ TEXT = {
     # Chatbot chat area
     'chatbot.user_label':        {'VI': 'BẠN',                       'EN': 'YOU'},
     'chatbot.bot_label':         {'VI': 'TRỢ LÝ AI',                 'EN': 'AI ASSISTANT'},
-    'chatbot.ai_ok':             {'VI': '● AI đã kết nối — Powered by Google Gemini',
-                                  'EN': '● AI connected — Powered by Google Gemini'},
+    'chatbot.ai_ok':             {'VI': '● AI đã kết nối',
+                                  'EN': '● AI connected'},
     'chatbot.ai_warn':           {'VI': '● Chế độ trả lời nhanh — AI chưa sẵn sàng',
                                   'EN': '● Quick reply mode — AI not ready'},
     'chatbot.no_conv_sel':       {'VI': 'Chọn một cuộc trò chuyện hoặc tạo mới.',

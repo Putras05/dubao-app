@@ -1281,20 +1281,8 @@ def render(ticker, train_ratio, date_from, date_to, df, r1, r2, r3, m1, m2, m3, 
     # ── Status banner — theme-aware ─────────────────────────────
     _status_dot_ok   = f'<span style="width:8px;height:8px;border-radius:50%;background:#10B981;display:inline-block;box-shadow:0 0 6px #10B981;flex-shrink:0"></span>'
     _status_dot_warn = f'<span style="width:8px;height:8px;border-radius:50%;background:#F59E0B;display:inline-block;box-shadow:0 0 6px #F59E0B;flex-shrink:0"></span>'
-    _groq_ready = is_groq_available()
     if _ai_ok:
-        # Hiển thị providers đang active
-        if _groq_ready:
-            _providers = 'Gemini + Groq (LLaMA 3.3)'
-            _suffix_vi = 'AI đã kết nối — Powered by ' + _providers
-            _suffix_en = 'AI connected — Powered by ' + _providers
-        else:
-            _suffix_vi = t('chatbot.ai_ok')
-            _suffix_en = t('chatbot.ai_ok')
-        _label = _suffix_vi if _lang == 'VI' else _suffix_en
         st.markdown(
-            f'<div class="chat-status chat-status-ok">{_status_dot_ok} ● {_label}</div>'
-            if _groq_ready else
             f'<div class="chat-status chat-status-ok">{_status_dot_ok} {t("chatbot.ai_ok")}</div>',
             unsafe_allow_html=True)
     else:
