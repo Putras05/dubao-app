@@ -433,7 +433,7 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
         fig.add_trace(go.Scatter(
             x=dates, y=sa.where(_bull_mask).values,
             mode='lines', line=dict(width=0, color='rgba(0,0,0,0)'),
-            fill='tonexty', fillcolor='rgba(16,185,129,0.25)',
+            fill='tonexty', fillcolor='rgba(16,185,129,0.40)',
             legendgroup='ichimoku', showlegend=False, hoverinfo='skip',
         ), row=1, col=1)
 
@@ -446,7 +446,7 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
         fig.add_trace(go.Scatter(
             x=dates, y=sb.where(~_bull_mask).values,
             mode='lines', line=dict(width=0, color='rgba(0,0,0,0)'),
-            fill='tonexty', fillcolor='rgba(239,68,68,0.25)',
+            fill='tonexty', fillcolor='rgba(239,68,68,0.40)',
             legendgroup='ichimoku', showlegend=False, hoverinfo='skip',
         ), row=1, col=1)
 
@@ -554,9 +554,16 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
         dragmode='pan',
     )
 
+    # axis-level uirevision: Plotly preserve user zoom/pan trên từng axis
+    # khi figure rebuild (vd toggle SMA/Ichimoku) → không reset về initial range.
+    _x_uirev = f'x_{ticker}_{interval}'
+    _y_price_uirev = f'yp_{ticker}_{interval}'
+    _y_vol_uirev = f'yv_{ticker}_{interval}'
+
     # X-axis chính (row 2, vì shared) — rangeselector đặt trên row 1
     fig.update_xaxes(
         range=_xaxis_range,
+        uirevision=_x_uirev,
         type='date',
         showgrid=False, zeroline=False,
         showline=True, linecolor=T['border'], linewidth=1,
@@ -570,6 +577,7 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
     )
     # X-axis row 1: gắn rangeselector
     fig.update_xaxes(
+        uirevision=_x_uirev,
         type='date',
         showgrid=False, zeroline=False,
         showline=True, linecolor=T['border'], linewidth=1,
@@ -590,15 +598,15 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
             font=dict(color=T['text_primary'], size=11),
             x=0, y=1.10, yanchor='bottom',
         ),
-        rangeslider=dict(visible=False),  # tắt rangeslider, thay bằng volume
+        rangeslider=dict(visible=False),
         **({'rangebreaks': _rangebreaks} if _rangebreaks else {}),
         row=1, col=1,
     )
 
-    # Y-axis row 1 (price) — drag thanh để zoom Y (TradingView style)
-    # showline + linewidth dày hơn → user thấy rõ thanh axis bên phải để grab
+    # Y-axis row 1 (price) — drag thanh để zoom Y; uirevision giữ user range
     fig.update_yaxes(
         range=_yrange_price,
+        uirevision=_y_price_uirev,
         fixedrange=False,
         automargin=True,
         showgrid=True, gridcolor=T['grid'], gridwidth=1,
@@ -616,6 +624,7 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
     # Y-axis row 2 (volume)
     fig.update_yaxes(
         range=_yrange_volume,
+        uirevision=_y_vol_uirev,
         fixedrange=False,
         automargin=True,
         showgrid=True, gridcolor=T['grid'], gridwidth=1,
