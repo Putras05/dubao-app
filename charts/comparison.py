@@ -325,7 +325,8 @@ def chart_test_result_plotly(res: dict, ticker: str, method: str,
     return fig
 
 _TF_FREQ = {'1D': None, '1W': 'W-FRI', '1M': 'MS', '3M': 'QS'}
-_TF_DEFAULT_DAYS = {'1D': 30, '1W': 180, '1M': 730, '3M': 1825}
+# Default zoom: 60 ngày (~45 nến) cho 1D — vừa thấy nhiều nến vừa đủ chi tiết.
+_TF_DEFAULT_DAYS = {'1D': 60, '1W': 365, '1M': 1095, '3M': 1825}
 
 
 def _resample_ohlc(df: pd.DataFrame, freq: str | None) -> pd.DataFrame:
@@ -433,7 +434,7 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
         fig.add_trace(go.Scatter(
             x=dates, y=sa.where(_bull_mask).values,
             mode='lines', line=dict(width=0, color='rgba(0,0,0,0)'),
-            fill='tonexty', fillcolor='rgba(16,185,129,0.40)',
+            fill='tonexty', fillcolor='rgba(34,197,94,0.45)',
             legendgroup='ichimoku', showlegend=False, hoverinfo='skip',
         ), row=1, col=1)
 
@@ -446,7 +447,7 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
         fig.add_trace(go.Scatter(
             x=dates, y=sb.where(~_bull_mask).values,
             mode='lines', line=dict(width=0, color='rgba(0,0,0,0)'),
-            fill='tonexty', fillcolor='rgba(239,68,68,0.40)',
+            fill='tonexty', fillcolor='rgba(220,38,38,0.45)',
             legendgroup='ichimoku', showlegend=False, hoverinfo='skip',
         ), row=1, col=1)
 
