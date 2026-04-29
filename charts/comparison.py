@@ -419,59 +419,53 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
         showlegend=False,
     ), row=1, col=1)
 
-    # ── Row 1: Ichimoku Cloud (vẽ TRƯỚC SMA để cloud nằm dưới) ──────────
+    # ── Row 1: Ichimoku Cloud — kỹ thuật giống trang Tín hiệu (sạch, không muddy)
+    # Single color cloud theo state HIỆN TẠI (không mask per-point). Khi bull
+    # hiện tại → toàn cloud xanh; khi bear → toàn cloud đỏ. Đơn giản & rõ.
     if show_ichimoku and 'Tenkan' in df.columns:
         sa = df['Senkou_A']
         sb = df['Senkou_B']
-        _bull_mask = sa >= sb
 
-        # Mây XANH (bull) — connectgaps=False để fill stop tại NaN, không bridge
-        fig.add_trace(go.Scatter(
-            x=dates, y=sb.where(_bull_mask).values,
-            mode='lines', line=dict(width=0, color='rgba(0,0,0,0)'),
-            connectgaps=False,
-            legendgroup='ichimoku', showlegend=False, hoverinfo='skip',
-        ), row=1, col=1)
-        fig.add_trace(go.Scatter(
-            x=dates, y=sa.where(_bull_mask).values,
-            mode='lines', line=dict(width=0, color='rgba(0,0,0,0)'),
-            fill='tonexty', fillcolor='rgba(16,185,129,0.55)',
-            connectgaps=False,
-            legendgroup='ichimoku', showlegend=False, hoverinfo='skip',
-        ), row=1, col=1)
+        _valid = sa.notna() & sb.notna()
+        if _valid.any():
+            _last_valid = sa[_valid].index[-1]
+            _is_bull_now = sa.loc[_last_valid] >= sb.loc[_last_valid]
+        else:
+            _is_bull_now = True
+        _fill_c = 'rgba(5,150,105,0.14)' if _is_bull_now else 'rgba(185,28,28,0.12)'
 
-        # Mây ĐỎ (bear)
+        # Senkou A — line emerald
         fig.add_trace(go.Scatter(
-            x=dates, y=sa.where(~_bull_mask).values,
-            mode='lines', line=dict(width=0, color='rgba(0,0,0,0)'),
-            connectgaps=False,
-            legendgroup='ichimoku', showlegend=False, hoverinfo='skip',
+            x=dates, y=sa.values, mode='lines', name='Senkou A',
+            line=dict(color='#059669', width=1.0),
+            legendgroup='ichimoku', showlegend=False,
+            hovertemplate='Senkou A: %{y:,.2f}<extra></extra>',
         ), row=1, col=1)
+        # Senkou B — line red, fill='tonexty' tới Senkou A → cloud 1 màu
         fig.add_trace(go.Scatter(
-            x=dates, y=sb.where(~_bull_mask).values,
-            mode='lines', line=dict(width=0, color='rgba(0,0,0,0)'),
-            fill='tonexty', fillcolor='rgba(239,68,68,0.55)',
-            connectgaps=False,
-            legendgroup='ichimoku', showlegend=False, hoverinfo='skip',
+            x=dates, y=sb.values, mode='lines', name='Senkou B',
+            line=dict(color='#B91C1C', width=1.0),
+            fill='tonexty', fillcolor=_fill_c,
+            legendgroup='ichimoku', showlegend=False,
+            hovertemplate='Senkou B: %{y:,.2f}<extra></extra>',
         ), row=1, col=1)
 
-        # Tenkan / Kijun / Chikou — đổi màu KHÁC với cloud red để tránh blend
-        # thành vùng nâu/xám khi line crossing cloud cùng màu.
+        # Tenkan red đậm + Kijun blue dashed (giống Ichimoku page)
         fig.add_trace(go.Scatter(
             x=dates, y=df['Tenkan'].values, mode='lines', name='Tenkan',
-            line=dict(color='#F97316', width=1),  # cam — phân biệt với cloud red
+            line=dict(color='#DC2626', width=1.5),
             legendgroup='ichimoku', showlegend=False,
             hovertemplate='Tenkan: %{y:,.2f}<extra></extra>',
         ), row=1, col=1)
         fig.add_trace(go.Scatter(
             x=dates, y=df['Kijun'].values, mode='lines', name='Kijun',
-            line=dict(color='#0EA5E9', width=1),  # cyan — phân biệt với cloud
+            line=dict(color='#1565C0', width=1.8, dash='dash'),
             legendgroup='ichimoku', showlegend=False,
             hovertemplate='Kijun: %{y:,.2f}<extra></extra>',
         ), row=1, col=1)
         fig.add_trace(go.Scatter(
             x=dates, y=df['Chikou'].values, mode='lines', name='Chikou',
-            line=dict(color='#A855F7', width=0.9, dash='dot'),  # tím nhạt
+            line=dict(color='#7C3AED', width=1.2, dash='dot'),
             legendgroup='ichimoku', showlegend=False,
             hovertemplate='Chikou: %{y:,.2f}<extra></extra>',
         ), row=1, col=1)
@@ -530,7 +524,8 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
 
     fig.update_layout(
         height=700,
-        margin=dict(l=50, r=30, t=50, b=30),
+        # right margin lớn hơn để vùng axis Y bên phải dễ click & drag
+        margin=dict(l=30, r=70, t=50, b=30),
         paper_bgcolor=T['bg_chart'],
         plot_bgcolor=T['bg_chart'],
         font=dict(family='Inter, system-ui, sans-serif', size=11, color=T['text_primary']),
@@ -604,9 +599,9 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
         showgrid=True, gridcolor=T['grid'], gridwidth=1,
         zeroline=False,
         showline=True, linecolor=T['border'], linewidth=2,
-        ticks='outside', tickcolor=T['border'], ticklen=8, tickwidth=1.5,
+        ticks='outside', tickcolor=T['border'], ticklen=10, tickwidth=2,
         tickformat=',.1f',
-        tickfont=dict(size=11, color=T['text_muted']),
+        tickfont=dict(size=12, color=T['text_secondary']),
         title=None,
         side='right',
         showspikes=True, spikecolor=T['accent'], spikemode='across',
