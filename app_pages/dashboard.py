@@ -398,8 +398,8 @@ def render(ticker, train_ratio, date_from, date_to, df, r1, r2, r3, m1, m2, m3, 
     st.markdown(f'<div class="sec-hdr">{t("dash.comparison")}</div>', unsafe_allow_html=True)
     _is_en_cmp = st.session_state.get('lang', 'VI') == 'EN'
 
-    # Timeframe selector (1D / 1W / 1M / 3M) + Ichimoku toggle
-    _tf_col, _ichi_col = st.columns([3, 1])
+    # Timeframe selector (1D / 1W / 1M / 3M) + SMA toggle + Ichimoku toggle
+    _tf_col, _sma_col, _ichi_col = st.columns([3, 1, 1])
     with _tf_col:
         _tf_label = 'Khung thời gian' if not _is_en_cmp else 'Timeframe'
         _tf_options = ['1D', '1W', '1M', '3M']
@@ -409,6 +409,15 @@ def render(ticker, train_ratio, date_from, date_to, df, r1, r2, r3, m1, m2, m3, 
             default='1D',
             key=f'cs_tf_{ticker}',
             label_visibility='collapsed',
+        )
+    with _sma_col:
+        _show_sma = st.toggle(
+            'SMA 5/20',
+            value=True,
+            key=f'cs_sma_{ticker}',
+            help=('Hiển thị 2 đường trung bình động SMA 5 (cam) & SMA 20 (tím)'
+                  if not _is_en_cmp else
+                  'Show SMA 5 (orange) & SMA 20 (purple) moving averages'),
         )
     with _ichi_col:
         _show_ichimoku = st.toggle(
@@ -460,6 +469,7 @@ def render(ticker, train_ratio, date_from, date_to, df, r1, r2, r3, m1, m2, m3, 
         fig_cmp = chart_price_candlestick(
             df, ticker, _T,
             interval=_selected_tf,
+            show_sma=_show_sma,
             show_ichimoku=_show_ichimoku,
         )
         # Candlestick: bật scroll wheel zoom + double-click reset (UX TradingView)

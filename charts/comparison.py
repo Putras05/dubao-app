@@ -348,12 +348,15 @@ def _resample_ohlc(df: pd.DataFrame, freq: str | None) -> pd.DataFrame:
 
 def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
                             interval: str = '1D',
+                            show_sma: bool = True,
                             show_ichimoku: bool = False) -> go.Figure:
-    """Candlestick chart TradingView-style — multi-TF + SMA + Volume + Ichimoku.
+    """Candlestick chart TradingView-style — multi-TF + Volume + toggle SMA/Ichimoku.
 
-    Layout: 2 hàng share x-axis. Row 1 (75%) = nến + SMA + Ichimoku.
+    Layout: 2 hàng share x-axis. Row 1 (75%) = nến + (optional) SMA + Ichimoku.
     Row 2 (25%) = volume bars (xanh/đỏ theo direction). KHÔNG dùng rangeslider
     nữa — thay bằng volume subplot. Pan/zoom qua scroll wheel + rangeselector.
+    Layout không có legend (trang tổng quan); user bật/tắt SMA & Ichimoku
+    qua toggle ở dashboard, KHÔNG qua legend click.
     """
     from plotly.subplots import make_subplots
     from data.ichimoku import add_ichimoku
@@ -422,6 +425,7 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
             x=dates, y=df['Senkou_A'].values, mode='lines', name='Senkou A',
             line=dict(color='rgba(16,185,129,0.45)', width=1),
             legendgroup='ichimoku',
+            showlegend=False,
             hovertemplate='Senkou A: %{y:,.2f}<extra></extra>',
         ), row=1, col=1)
         fig.add_trace(go.Scatter(
@@ -429,38 +433,44 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
             line=dict(color='rgba(239,68,68,0.45)', width=1),
             fill='tonexty', fillcolor='rgba(124,131,201,0.20)',
             legendgroup='ichimoku',
+            showlegend=False,
             hovertemplate='Senkou B: %{y:,.2f}<extra></extra>',
         ), row=1, col=1)
         fig.add_trace(go.Scatter(
             x=dates, y=df['Tenkan'].values, mode='lines', name='Tenkan',
             line=dict(color='#EF4444', width=1.2),
             legendgroup='ichimoku',
+            showlegend=False,
             hovertemplate='Tenkan: %{y:,.2f}<extra></extra>',
         ), row=1, col=1)
         fig.add_trace(go.Scatter(
             x=dates, y=df['Kijun'].values, mode='lines', name='Kijun',
             line=dict(color='#3B82F6', width=1.2),
             legendgroup='ichimoku',
+            showlegend=False,
             hovertemplate='Kijun: %{y:,.2f}<extra></extra>',
         ), row=1, col=1)
         fig.add_trace(go.Scatter(
             x=dates, y=df['Chikou'].values, mode='lines', name='Chikou',
             line=dict(color='#A855F7', width=1, dash='dot'),
             legendgroup='ichimoku',
+            showlegend=False,
             hovertemplate='Chikou: %{y:,.2f}<extra></extra>',
         ), row=1, col=1)
 
-    # ── Row 1: SMA overlays ─────────────────────────────────────────────
-    if len(df) > 0:
+    # ── Row 1: SMA overlays (toggle bật/tắt từ dashboard) ────────────────
+    if show_sma and len(df) > 0:
         fig.add_trace(go.Scatter(
             x=dates, y=df['SMA5'].values, mode='lines', name='SMA 5',
             line=dict(color=sma5_color, width=1.3),
             hovertemplate='SMA 5: %{y:,.2f}<extra></extra>',
+            showlegend=False,
         ), row=1, col=1)
         fig.add_trace(go.Scatter(
             x=dates, y=df['SMA20'].values, mode='lines', name='SMA 20',
             line=dict(color=sma20_color, width=1.3),
             hovertemplate='SMA 20: %{y:,.2f}<extra></extra>',
+            showlegend=False,
         ), row=1, col=1)
 
     # ── Row 2: Volume bars ──────────────────────────────────────────────
@@ -506,18 +516,11 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
         paper_bgcolor=T['bg_chart'],
         plot_bgcolor=T['bg_chart'],
         font=dict(family='Inter, system-ui, sans-serif', size=11, color=T['text_primary']),
-        showlegend=True,
+        showlegend=False,
         hovermode='x unified',
         hoverlabel=dict(
             bgcolor=T['bg_card'], bordercolor=T['border'],
             font_size=12, font_color=T['text_primary'],
-        ),
-        legend=dict(
-            orientation='h', yanchor='bottom', y=1.02,
-            xanchor='right', x=1.0,
-            bgcolor='rgba(0,0,0,0)',
-            font=dict(size=11, color=T['text_primary']),
-            groupclick='togglegroup',
         ),
         uirevision=f'cs_{ticker}_{interval}',
         bargap=0.15,
