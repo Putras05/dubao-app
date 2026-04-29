@@ -132,14 +132,20 @@ def render_decision_tree_cart(ticker: str, train_ratio: float, T=None, best_para
         line_x.extend([rcx, rcx, None])
         line_y.extend([mid_y, rcy + rch, None])
 
-        # Labels TRUE/FALSE
+        # Labels Đúng/Sai (TRUE/FALSE) — đặt giữa thanh connector ngang,
+        # màu xanh cho Đúng / đỏ cho Sai, có pill nền trắng để đè connector rõ
         for child_x, cy, ch, is_left in [(lcx, lcy, lch, True), (rcx, rcy, rch, False)]:
             lbl = t('cart.lbl_true') if is_left else t('cart.lbl_false')
+            _lbl_color = '#047857' if is_left else '#B91C1C'
+            _bg_pill = '#0F172A' if is_dark else '#FFFFFF'
+            _border_pill = '#34D399' if is_left else '#F87171'
             lbl_annotations.append(dict(
-                x=(px + child_x) / 2, y=mid_y + 0.08,
-                text=lbl, showarrow=False,
-                font=dict(size=9, color=label_clr, family='Inter'),
-                xanchor='center', yanchor='bottom', bgcolor='rgba(0,0,0,0)',
+                x=(px + child_x) / 2, y=mid_y,
+                text=f'<b>{lbl}</b>', showarrow=False,
+                font=dict(size=10, color=_lbl_color, family='Inter'),
+                xanchor='center', yanchor='middle',
+                bgcolor=_bg_pill, bordercolor=_border_pill,
+                borderwidth=1, borderpad=3,
             ))
 
     def traverse(n=0):

@@ -448,12 +448,13 @@ def _page_chart(pdf, ticker, df, r1, r2, r3, m1, m2, m3, ar_order, lang='VI'):
     # ── PANEL A — Actual vs 3 forecasts (top, full width) ─────────────────
     axA = fig.add_axes([0.08, 0.55, 0.84, 0.30])
     yte = np.asarray(r1['yte'], dtype=float)
-    axA.plot(dates_te, yte, color=_C_TEXT, linewidth=1.4,
-             alpha=0.85,
+    # Actual đen nhạt + 3 model nhạt hơn nữa → nhìn nhẹ, không "đậm như mực"
+    axA.plot(dates_te, yte, color=_C_TEXT, linewidth=1.0,
+             alpha=0.55,
              label=_L('Thực tế', 'Actual', lang), zorder=5)
     for nm, clr, res, m in models:
         axA.plot(dates_te, np.asarray(res['pte'], dtype=float),
-                 color=clr, linewidth=0.8, alpha=0.55,
+                 color=clr, linewidth=0.6, alpha=0.40,
                  label=f'{nm} (MAPE={m["MAPE"]:.2f}%)')
     axA.set_title(_L('A. So sánh dự báo trên tập kiểm tra',
                      'A. Forecast comparison on test set', lang),
@@ -581,14 +582,13 @@ def _page_test_timeseries(pdf, ticker, r1, r2, r3, ar_order, lang='VI'):
         y_true = np.array(res['yte'])
         y_pred = np.array(res['pte'])
         x = np.arange(len(y_true))
-        # Đường actual ở DƯỚI đường dự báo (zorder thấp), nhưng đậm hơn để
-        # vẫn lộ rõ qua đường dashed dự báo nhạt phía trên.
-        ax.fill_between(x, y_true, y_pred, color=clr, alpha=0.10, zorder=1)
-        ax.plot(x, y_pred, color=clr, linewidth=0.8, linestyle='--',
-                alpha=0.55,
+        # Cả actual + prediction đều nhạt — dễ nhìn, không đậm
+        ax.fill_between(x, y_true, y_pred, color=clr, alpha=0.08, zorder=1)
+        ax.plot(x, y_pred, color=clr, linewidth=0.6, linestyle='--',
+                alpha=0.40,
                 label=_L(f'Dự báo {nm}', f'Forecast {nm}', lang), zorder=2)
-        ax.plot(x, y_true, color=_C_TEXT, linewidth=1.2,
-                alpha=0.9,
+        ax.plot(x, y_true, color=_C_TEXT, linewidth=0.9,
+                alpha=0.55,
                 label=_L('Thực tế', 'Actual', lang), zorder=3)
 
         ax.set_ylabel(_L('nghìn đ', 'k VND', lang),
