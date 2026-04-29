@@ -15,7 +15,7 @@ from ui.components import (
     sparkline_svg, render_ai_insight,
     render_param_timeline, render_param_badge,
 )
-from charts.comparison import chart_comparison_plotly
+from charts.comparison import chart_price_candlestick
 from charts.base import _PLOTLY_CONFIG
 
 
@@ -398,11 +398,13 @@ def render(ticker, train_ratio, date_from, date_to, df, r1, r2, r3, m1, m2, m3, 
     st.markdown(f'<div class="sec-hdr">{t("dash.comparison")}</div>', unsafe_allow_html=True)
     _is_en_cmp = st.session_state.get('lang', 'VI') == 'EN'
     _cmp_hint = (
-        'Đơn vị giá: <b>nghìn đ</b> · Hover để xem giá dự báo chi tiết (3 chữ số thập phân). '
-        '<b>MAPE</b> (%) — sai số phần trăm tuyệt đối trung bình, càng thấp càng chính xác.'
+        'Đơn vị giá: <b>nghìn đ</b> · Nến <span style="color:#10B981">xanh</span> = tăng, '
+        '<span style="color:#EF4444">đỏ</span> = giảm · '
+        'Click <b>1M/3M/6M/1N/Tất cả</b> để zoom · Kéo <b>thanh dưới</b> để xem lịch sử.'
         if not _is_en_cmp else
-        'Price unit: <b>k VND</b> · Hover for detailed forecast prices (3 decimals). '
-        '<b>MAPE</b> (%) — Mean Absolute Percentage Error, lower is better.'
+        'Price unit: <b>k VND</b> · <span style="color:#10B981">Green</span> = up, '
+        '<span style="color:#EF4444">red</span> = down · '
+        'Click <b>1M/3M/6M/1Y/All</b> to zoom · Drag <b>bottom slider</b> to scroll history.'
     )
     st.markdown(
         f'<div style="font-size:11px;color:{_T["text_muted"]};margin:-4px 0 6px;'
@@ -410,7 +412,7 @@ def render(ticker, train_ratio, date_from, date_to, df, r1, r2, r3, m1, m2, m3, 
         unsafe_allow_html=True,
     )
     try:
-        fig_cmp = chart_comparison_plotly(r1, r2, r3, ticker, _T)
+        fig_cmp = chart_price_candlestick(df, ticker, _T)
         st.plotly_chart(fig_cmp, use_container_width=True, config=_PLOTLY_CONFIG)
     except Exception as _e:
         st.error(f'Chart error: {_e}')

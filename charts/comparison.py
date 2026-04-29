@@ -12,7 +12,6 @@ import streamlit as st
 from core.themes import theme, set_mpl_theme
 from core.constants import CLR, get_clr
 from core.i18n import t
-from data.metrics import calc_metrics
 from charts.base import _plotly_axes_style, _plotly_layout_base
 
 
@@ -325,120 +324,96 @@ def chart_test_result_plotly(res: dict, ticker: str, method: str,
     fig.update_xaxes(range=[mn, mx], row=1, col=2)
     return fig
 
-
-def chart_comparison_plotly(r1: dict, r2: dict, r3: dict, ticker: str, T: dict):
-    """Plotly comparison chart với label MAPE rõ ràng + hover 3-decimal."""
-    td = pd.to_datetime(r1['dates_te'])
-    # Lấy p từ result (AR trả về key 'p')
-    p_val = r1.get('p', 1)
-    m1 = calc_metrics(r1['yte'], r1['pte'],   k=p_val)
-    m2 = calc_metrics(r2['yte'], r2['pte'],   k=3 * p_val)
-    m3 = calc_metrics(r3['yte'], r3['pte'],   k=6 * p_val)
+def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict) -> go.Figure:
+    """Candlestick chart kiểu TradingView — pan/zoom xem toàn bộ lịch sử OHLC."""
+    is_dark = T.get('is_dark', False)
     lang = st.session_state.get('lang', 'VI')
-    actual_label = 'Giá thực tế' if lang == 'VI' else 'Actual Price'
-    # Suffix đơn vị giá: data ở nghìn đ → hiển thị "nghìn đ" trong tooltip
-    unit_vi = 'nghìn đ'
-    unit_en = 'k VND'
-    unit = unit_vi if lang == 'VI' else unit_en
-    # Prefix cho MAPE rõ nghĩa
-    mape_prefix = 'MAPE' if lang == 'VI' else 'MAPE'
 
-    fig = go.Figure()
+    dates = pd.to_datetime(df['Ngay'])
 
-    fig.add_trace(go.Scatter(
-        x=td, y=r1['yte'], mode='lines', name=actual_label,
-        line=dict(color=T['actual_line'], width=1.8),
-        hovertemplate=('<b>' + actual_label + '</b>: %{y:,.3f} ' + unit + '<extra></extra>'),
-    ))
+    inc_color = '#10B981'
+    dec_color = '#EF4444'
+    label_all = 'Tất cả' if lang == 'VI' else 'All'
 
-    # Label legend: "AR(1) · MAPE 1.40%" — rõ nghĩa MAPE, không phải % trần
-    # 3 markers cuối: offset x + 3 shape khác nhau để luôn thấy rõ cả 3
-    # dù y gần nhau. Kèm connector dashed từ điểm cuối line → marker.
-    _last_x = td[-1]
-    _offset_days = [2, 5, 8]
-    _shapes     = ['diamond', 'square', 'triangle-up']
-    for idx, (pred, short_name, color) in enumerate([
-        (r1['pte'], f'AR({p_val})', T['ar_line']),
-        (r2['pte'], f'MLR({p_val})', T['mlr_line']),
-        (r3['pte'], f'CART({p_val})', T['dt_line']),
-    ]):
-        mape_val = (m1 if short_name.startswith('AR') else
-                     m2 if short_name.startswith('MLR') else m3)['MAPE']
-        legend_name = f'{short_name}  ·  {mape_prefix} {mape_val:.2f}%'
-        fig.add_trace(go.Scatter(
-            x=td, y=pred, mode='lines', name=legend_name,
-            line=dict(color=color, width=1.3),
-            opacity=0.85,
-            hovertemplate=(f'<b>{short_name}</b>: %{{y:,.3f}} {unit}<extra></extra>'),
-        ))
-        _marker_x = _last_x + pd.Timedelta(days=_offset_days[idx])
-        # Connector dashed từ điểm cuối line → marker
-        fig.add_trace(go.Scatter(
-            x=[_last_x, _marker_x], y=[pred[-1], pred[-1]],
-            mode='lines',
-            line=dict(color=color, width=1.0, dash='dot'),
-            opacity=0.55,
-            showlegend=False, hoverinfo='skip',
-        ))
-        # Marker riêng với shape khác nhau
-        fig.add_trace(go.Scatter(
-            x=[_marker_x], y=[pred[-1]], mode='markers',
-            marker=dict(
-                size=11, color=color, symbol=_shapes[idx],
-                line=dict(width=1.5, color=T['bg_chart']),
-            ),
-            name=short_name,
-            showlegend=False,
-            hovertemplate=(f'<b>{short_name}</b> (cuối): %{{y:,.3f}} {unit}<extra></extra>'),
-        ))
+    fig = go.Figure(data=[go.Candlestick(
+        x=dates,
+        open=df['Open'].values,
+        high=df['High'].values,
+        low=df['Low'].values,
+        close=df['Close'].values,
+        increasing=dict(
+            line=dict(color=inc_color, width=1),
+            fillcolor=inc_color,
+        ),
+        decreasing=dict(
+            line=dict(color=dec_color, width=1),
+            fillcolor=dec_color,
+        ),
+        name=ticker,
+        showlegend=False,
+    )])
+
+    if len(dates) > 0:
+        _last = dates.iloc[-1]
+        _start_3m = _last - pd.Timedelta(days=90)
+        _xaxis_range = [_start_3m, _last + pd.Timedelta(days=2)]
+    else:
+        _xaxis_range = None
 
     fig.update_layout(
-        height=320,
-        margin=dict(l=50, r=30, t=70, b=36),
+        height=520,
+        margin=dict(l=50, r=30, t=50, b=30),
         paper_bgcolor=T['bg_chart'],
         plot_bgcolor=T['bg_chart'],
         font=dict(family='Inter, system-ui, sans-serif', size=11, color=T['text_primary']),
+        showlegend=False,
         hovermode='x unified',
         hoverlabel=dict(
             bgcolor=T['bg_card'], bordercolor=T['border'],
             font_size=12, font_color=T['text_primary'],
         ),
-        legend=dict(
-            orientation='h', yanchor='bottom', y=1.06,
-            xanchor='center', x=0.5,
-            bgcolor='rgba(0,0,0,0)',
-            font=dict(size=11, color=T['text_primary']),
-            itemsizing='constant', itemwidth=40,
-        ),
         xaxis=dict(
+            range=_xaxis_range,
+            type='date',
             showgrid=False, zeroline=False,
             showline=True, linecolor=T['border'], linewidth=1,
             ticks='outside', tickcolor=T['border'], ticklen=4,
-            tickformat='%m/%Y',
+            tickformat='%d/%m/%Y',
             tickfont=dict(size=10, color=T['text_muted']),
+            showspikes=True, spikecolor=T['accent'], spikemode='across',
+            spikesnap='cursor', spikedash='dot', spikethickness=1,
             rangeselector=dict(
                 buttons=[
-                    dict(count=1,  label='1M', step='month', stepmode='backward'),
-                    dict(count=3,  label='3M', step='month', stepmode='backward'),
-                    dict(count=6,  label='6M', step='month', stepmode='backward'),
-                    dict(count=1,  label='1N', step='year',  stepmode='backward'),
-                    dict(step='all', label=t('chart.range_all')),
+                    dict(count=1, label='1M', step='month', stepmode='backward'),
+                    dict(count=3, label='3M', step='month', stepmode='backward'),
+                    dict(count=6, label='6M', step='month', stepmode='backward'),
+                    dict(count=1, label='1N', step='year',  stepmode='backward'),
+                    dict(step='all', label=label_all),
                 ],
                 bgcolor=T['bg_card'],
                 activecolor=T['accent'],
                 bordercolor=T['border'],
                 borderwidth=1,
                 font=dict(color=T['text_primary'], size=11),
-                x=0, y=1.28,
+                x=0, y=1.10, yanchor='bottom',
             ),
-            type='date',
+            rangeslider=dict(
+                visible=True,
+                bgcolor=T['bg_card'],
+                bordercolor=T['border'],
+                borderwidth=1,
+                thickness=0.07,
+            ),
+            rangebreaks=[dict(bounds=['sat', 'mon'])],
         ),
         yaxis=dict(
             showgrid=True, gridcolor=T['grid'], gridwidth=1,
             zeroline=False, showline=False, ticks='',
-            tickformat=',',
+            tickformat=',.1f',
             tickfont=dict(size=10, color=T['text_muted']),
             title=None,
+            showspikes=True, spikecolor=T['accent'], spikemode='across',
+            spikesnap='cursor', spikedash='dot', spikethickness=1,
         ),
     )
     return fig
