@@ -38,21 +38,25 @@ if 'lang' not in st.session_state:
 
 _T = theme()
 
-inject_global_css()
-inject_theme_css(_T)
-inject_theme_js(_T)
-force_sidebar_open_js()
-hide_streamlit_badges_js()
+# ── Inject CSS/JS 1 LẦN/session (re-inject khi đổi theme) ───────────────────
+# 1700+ dòng CSS qua websocket mỗi rerun là lag chính. Gate bằng session_state
+# theo theme_mode → chỉ inject khi theme đổi.
+_inj_key = f"_inj_{st.session_state['theme_mode']}"
+if not st.session_state.get(_inj_key):
+    # Xóa marker theme cũ để inject lại nếu user đổi theme nhiều lần
+    for _old in [k for k in list(st.session_state.keys())
+                 if k.startswith('_inj_') and k != _inj_key]:
+        del st.session_state[_old]
 
-# ẨN UI CHUẨN: dùng config.toml với toolbarMode="minimal" (đã set ở .streamlit/config.toml)
-# → Manage app button, hamburger menu, header bị ẩn CHÍNH THỨC (không cần CSS hack)
-# Badge "Hosted with Streamlit" — branding bắt buộc của Streamlit free tier,
-# không có cách technical nào ẩn 100% (các hack CSS/JS hoạt động không ổn định).
-# Muốn ẩn hoàn toàn: Streamlit Starter $20/tháng hoặc đổi host sang Render.com/VPS.
-st.markdown("""
+    inject_global_css()
+    inject_theme_css(_T)
+    inject_theme_js(_T)
+    force_sidebar_open_js()
+    hide_streamlit_badges_js()
+
+    # Backup CSS ẩn Streamlit branding (xem note bên dưới)
+    st.markdown("""
 <style>
-    /* CSS backup — ẩn các phần tử có class/attribute rõ ràng là Streamlit Cloud branding.
-       Không dùng <script> vì Streamlit sanitize và không chạy script trong st.markdown. */
     [class*="viewerBadge"], [class*="ViewerBadge"],
     [class*="_profileContainer_"], [class*="profileContainer"],
     [data-testid="stDecoration"],
@@ -67,6 +71,13 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
+
+    st.session_state[_inj_key] = True
+
+# Note: toolbarMode="minimal" trong .streamlit/config.toml đã ẩn Manage app /
+# hamburger / header chính thức. Badge "Hosted with Streamlit" là branding bắt
+# buộc free tier — CSS hack không ổn định, muốn ẩn 100% phải Streamlit Starter
+# $20/tháng hoặc Render.com/VPS.
 
 # Preload 3 tickers 1 lần duy nhất mỗi session → UX mượt hơn
 from core.preload import preload_all_tickers, trigger_bg_cart

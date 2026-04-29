@@ -5,12 +5,42 @@ from core.i18n import t
 from core.constants import CLR
 from core.themes import theme
 from data.metrics import _ci95, _star
+import pandas as pd
 from data.ichimoku import (
     add_ichimoku, classify_primary_trend, detect_tk_cross,
     classify_trading_signal, classify_chikou_confirmation,
     classify_future_kumo, aggregate_signals,
-    _donchian_mid, SENKOU_N,
+    _donchian_mid, SENKOU_N, _df_fingerprint,
 )
+
+
+@st.cache_data(show_spinner=False, hash_funcs={pd.DataFrame: _df_fingerprint})
+def _ichi_dashboard_summary(df: pd.DataFrame) -> tuple:
+    """Tính toán Ichimoku card data 1 lần — cache theo (last_date, len, last_close).
+
+    Returns: (ov_code, ov_label, score, prim, trd, chk, fut)
+    """
+    _df_ichi = add_ichimoku(df)
+    _ichi_last = _df_ichi.iloc[-1]
+    _close_now = float(_ichi_last['Close'])
+
+    _prim_code, _ = classify_primary_trend(
+        _close_now,
+        float(_ichi_last['Kumo_top']) if not np.isnan(_ichi_last['Kumo_top']) else float('nan'),
+        float(_ichi_last['Kumo_bot']) if not np.isnan(_ichi_last['Kumo_bot']) else float('nan'),
+    )
+    _tk_code, _, _ = detect_tk_cross(_df_ichi['Tenkan'], _df_ichi['Kijun'])
+    _trd_code, _   = classify_trading_signal(_tk_code, _prim_code)
+    _c26 = float(_df_ichi['Close'].iloc[-27]) if len(_df_ichi) >= 27 else float('nan')
+    _chk_code, _   = classify_chikou_confirmation(_close_now, _c26)
+    _ten_n = float(_ichi_last['Tenkan']); _kij_n = float(_ichi_last['Kijun'])
+    _fa = (_ten_n + _kij_n) / 2.0
+    _fb = float(_donchian_mid(df['High'], df['Low'], SENKOU_N).iloc[-1])
+    _fut_code, _   = classify_future_kumo(_fa, _fb)
+
+    _ov_code, _ov_label, _score = aggregate_signals(
+        _prim_code, _trd_code, _chk_code, _fut_code)
+    return (_ov_code, _ov_label, _score, _prim_code, _trd_code, _chk_code, _fut_code)
 from ui.components import (
     sparkline_svg, render_ai_insight,
     render_param_timeline, render_param_badge,
@@ -115,27 +145,9 @@ def render(ticker, train_ratio, date_from, date_to, df, r1, r2, r3, m1, m2, m3, 
     T    = df.iloc[-1]
     ngay = str(df['Ngay'].iloc[-1])
 
-    # ── Tính toán Ichimoku cho card tín hiệu tổng hợp ──────────────────
-    _df_ichi   = add_ichimoku(df)
-    _ichi_last = _df_ichi.iloc[-1]
-    _close_now = float(_ichi_last['Close'])
-
-    _prim_code, _ = classify_primary_trend(
-        _close_now,
-        float(_ichi_last['Kumo_top']) if not np.isnan(_ichi_last['Kumo_top']) else float('nan'),
-        float(_ichi_last['Kumo_bot']) if not np.isnan(_ichi_last['Kumo_bot']) else float('nan'),
-    )
-    _tk_code, _, _ = detect_tk_cross(_df_ichi['Tenkan'], _df_ichi['Kijun'])
-    _trd_code, _   = classify_trading_signal(_tk_code, _prim_code)
-    _c26 = float(_df_ichi['Close'].iloc[-27]) if len(_df_ichi) >= 27 else float('nan')
-    _chk_code, _   = classify_chikou_confirmation(_close_now, _c26)
-    _ten_n = float(_ichi_last['Tenkan']); _kij_n = float(_ichi_last['Kijun'])
-    _fa = (_ten_n + _kij_n) / 2.0
-    _fb = float(_donchian_mid(df['High'], df['Low'], SENKOU_N).iloc[-1])
-    _fut_code, _   = classify_future_kumo(_fa, _fb)
-
-    _ov_code, _ov_label, _score = aggregate_signals(
-        _prim_code, _trd_code, _chk_code, _fut_code)
+    # ── Ichimoku summary CACHED — tránh recompute mỗi rerun ──────────────
+    (_ov_code, _ov_label, _score,
+     _prim_code, _trd_code, _chk_code, _fut_code) = _ichi_dashboard_summary(df)
 
     # Share Ichimoku summary sang chatbot qua session_state để AI trả lời đúng
     import streamlit as _st_ref
