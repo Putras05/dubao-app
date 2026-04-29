@@ -88,16 +88,18 @@ def render(ticker, train_ratio, date_from, date_to, df, r1, r2, r3, m1, m2, m3, 
 
 <b style="color:{_T['text_primary']}">{'Các thông tin hiển thị:' if not _is_en else 'Information displayed:'}</b><br>
 {'• Giá đóng cửa hiện tại và thay đổi so với phiên trước<br>'
- '• Dự báo giá phiên tới từ mô hình tốt nhất (MAPE thấp nhất)<br>'
- '• Tín hiệu Ichimoku: trạng thái đồng thuận 4 tầng + điểm ±5<br>'
- '• Biến động 30 ngày (Volatility) và phân loại rủi ro<br>'
- '• Biểu đồ mini (sparkline) xu hướng 30 phiên gần nhất'
+ '• 3 card mô hình AR · MLR · CART với giá dự báo + KTC 95% + sparkline<br>'
+ '• AI Insight tổng hợp: tín hiệu Ichimoku 4 tầng + dự báo phiên tới<br>'
+ '• <b>Biểu đồ nến TradingView-style</b>: chọn khung 1D/1W/1M/3M, '
+ 'toggle SMA 5/20 và Ichimoku, info bar O/H/L/C, volume bar dưới<br>'
+ '• Bảng xếp hạng mô hình theo MAPE'
  if not _is_en else
  '• Current close price and change vs. previous session<br>'
- '• Next-session forecast from best model (lowest MAPE)<br>'
- '• Ichimoku signal: 4-tier consensus status + score ±5<br>'
- '• 30-day Volatility and risk classification<br>'
- '• Mini sparkline chart for last 30 sessions'}
+ '• 3 model cards AR · MLR · CART with forecast + 95% CI + sparkline<br>'
+ '• AI Insight: Ichimoku 4-tier signal + next-session forecast<br>'
+ '• <b>TradingView-style candlestick chart</b>: pick 1D/1W/1M/3M, '
+ 'toggle SMA 5/20 and Ichimoku, OHLC info bar, volume bars below<br>'
+ '• Model ranking table by MAPE'}
 """)
 
         _guide_card(_IC_HIST, '3. Lịch sử & Dữ liệu' if not _is_en else '3. History & Data',
@@ -125,15 +127,13 @@ def render(ticker, train_ratio, date_from, date_to, df, r1, r2, r3, m1, m2, m3, 
  if not _is_en else 'Compare forecast performance and risk across 3 stocks.'}<br><br>
 
 <b style="color:{_T['text_primary']}">{'Nội dung:' if not _is_en else 'Content:'}</b><br>
-{'• Biểu đồ hiệu suất chuẩn hóa (Base = 100)<br>'
+{'• Biểu đồ hiệu suất chuẩn hóa 3 mã (Base = 100) — so sánh tương đối<br>'
  '• Bảng MAPE · RMSE · MAE · R²adj cho cả 3 mô hình × 3 mã<br>'
- '• Ma trận tương quan Return (Pearson) — heatmap tương tác<br>'
- '• Biểu đồ biến động ngày (Std Return %) theo mã'
+ '• Card sparkline + thống kê Return (mean/std/min/max/up_days) cho mỗi mã'
  if not _is_en else
- '• Normalized performance chart (Base = 100)<br>'
+ '• Normalized performance chart (Base = 100) — relative comparison<br>'
  '• MAPE · RMSE · MAE · R²adj table for 3 models × 3 tickers<br>'
- '• Return correlation matrix (Pearson) — interactive heatmap<br>'
- '• Daily volatility bar chart (Std Return %) by ticker'}
+ '• Sparkline cards + Return stats (mean/std/min/max/up_days) per ticker'}
 """)
 
         _guide_card(_IC_PDF, '7. Xuất báo cáo PDF' if not _is_en else '7. Export PDF Report',
@@ -156,8 +156,9 @@ def render(ticker, train_ratio, date_from, date_to, df, r1, r2, r3, m1, m2, m3, 
 <b style="color:{_T['text_primary']}">{'Nội dung 10 trang báo cáo:' if not _is_en else '10-page report content:'}</b><br>
 {'• <b>Trang 1:</b> Bìa — tên đề tài, ticker, ngày xuất<br>'
  '• <b>Trang 2:</b> Mục lục<br>'
- '• <b>Trang 3:</b> Biểu đồ lịch sử giá + phân phối Return + Volume<br>'
- '• <b>Trang 4:</b> Actual vs Predicted — so sánh 3 mô hình trên tập test<br>'
+ '• <b>Trang 3:</b> Chẩn đoán mô hình — 4 panel: Test set comparison, '
+ 'Bar MAPE/RMSE/MAE, ACF phần dư, Chuỗi phần dư theo thời gian<br>'
+ '• <b>Trang 4:</b> Actual vs Predicted — 3 subplot xếp dọc cho từng mô hình<br>'
  '• <b>Trang 5:</b> Scatter y=x + OLS fit + hệ số AR/MLR chi tiết<br>'
  '• <b>Trang 6:</b> CART — độ quan trọng 6 đặc trưng + hyperparameters GridSearchCV<br>'
  '• <b>Trang 7:</b> CART — sơ đồ cây quyết định (custom visualization)<br>'
@@ -167,8 +168,9 @@ def render(ticker, train_ratio, date_from, date_to, df, r1, r2, r3, m1, m2, m3, 
  if not _is_en else
  '• <b>Page 1:</b> Cover — project title, ticker, export date<br>'
  '• <b>Page 2:</b> Table of contents<br>'
- '• <b>Page 3:</b> Price history chart + Return distribution + Volume<br>'
- '• <b>Page 4:</b> Actual vs Predicted — 3-model comparison on test set<br>'
+ '• <b>Page 3:</b> Model diagnostics — 4 panels: Test-set comparison, '
+ 'MAPE/RMSE/MAE bars, residual ACF, residual time series<br>'
+ '• <b>Page 4:</b> Actual vs Predicted — 3 stacked subplots, one per model<br>'
  '• <b>Page 5:</b> Scatter y=x + OLS fit + detailed AR/MLR coefficients<br>'
  '• <b>Page 6:</b> CART — feature importance (6 features) + GridSearchCV hyperparameters<br>'
  '• <b>Page 7:</b> CART — decision tree diagram (custom visualization)<br>'
@@ -271,13 +273,15 @@ def render(ticker, train_ratio, date_from, date_to, df, r1, r2, r3, m1, m2, m3, 
  '• Tìm kiếm tin nhắn trong hội thoại hiện tại (highlight từ khoá)<br>'
  '• Sơ đồ trực quan tự động: AR lag diagram, thang MAPE, 4 tầng Ichimoku<br>'
  '• Song ngữ VI / EN theo ngôn ngữ app<br>'
- '• <b>Powered by Google Gemini</b> — có chế độ rule-based khi API không khả dụng'
+ '• Cache câu trả lời 7 ngày — câu hỏi lặp lại trả lời tức thì<br>'
+ '• Có chế độ rule-based khi AI không khả dụng (offline fallback)'
  if not _is_en else
  '• Multiple parallel conversations — create, rename, delete, preserve history<br>'
  '• In-conversation message search (keyword highlight)<br>'
  '• Auto-rendered visual diagrams: AR lag, MAPE scale, Ichimoku 4 tiers<br>'
  '• Bilingual VI / EN following app language<br>'
- '• <b>Powered by Google Gemini</b> — falls back to rule-based mode when API unavailable'}
+ '• 7-day response cache — repeated questions answered instantly<br>'
+ '• Rule-based fallback when AI is unavailable (offline mode)'}
 """)
 
         _guide_card(_IC_SET, 'Thanh điều khiển Sidebar' if not _is_en else 'Sidebar Controls',
