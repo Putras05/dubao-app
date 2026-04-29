@@ -483,23 +483,22 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
             ), row=1, col=1)
 
         # Tenkan = CAM (không trùng cloud red), Kijun = CYAN, Chikou = TÍM
-        # Tenkan / Kijun / Chikou — go.Scattergl (WebGL) → pan/zoom near-free
-        # Plotly cho phép mix Scattergl line traces với Candlestick (SVG) trong
-        # cùng subplot, render layers riêng. ~5×750 pts → essentially free trên
-        # GPU thay vì SVG node-count cost trên mỗi repaint frame.
-        fig.add_trace(go.Scattergl(
+        # Tenkan / Kijun / Chikou — go.Scatter (SVG)
+        # KHÔNG dùng Scattergl: WebGL render BELOW SVG cloud → bị mây che hết.
+        # Trade-off: lag pan/zoom hơi tăng (acceptable) đổi lấy lines visible.
+        fig.add_trace(go.Scatter(
             x=dates, y=df['Tenkan'].values, mode='lines', name='Tenkan',
             line=dict(color='#F97316', width=1.4),
             legendgroup='ichimoku', showlegend=False,
             hovertemplate='Tenkan: %{y:,.2f}<extra></extra>',
         ), row=1, col=1)
-        fig.add_trace(go.Scattergl(
+        fig.add_trace(go.Scatter(
             x=dates, y=df['Kijun'].values, mode='lines', name='Kijun',
             line=dict(color='#0EA5E9', width=1.6, dash='dash'),
             legendgroup='ichimoku', showlegend=False,
             hovertemplate='Kijun: %{y:,.2f}<extra></extra>',
         ), row=1, col=1)
-        fig.add_trace(go.Scattergl(
+        fig.add_trace(go.Scatter(
             x=dates, y=df['Chikou'].values, mode='lines', name='Chikou',
             line=dict(color='#A855F7', width=1.1, dash='dot'),
             legendgroup='ichimoku', showlegend=False,
@@ -507,15 +506,14 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
         ), row=1, col=1)
 
     # ── Row 1: SMA overlays (toggle bật/tắt từ dashboard) ────────────────
-    # Scattergl cho SMA → giảm SVG node-count, pan/zoom mượt
     if show_sma and len(df) > 0:
-        fig.add_trace(go.Scattergl(
+        fig.add_trace(go.Scatter(
             x=dates, y=df['SMA5'].values, mode='lines', name='SMA 5',
             line=dict(color=sma5_color, width=1.3),
             hovertemplate='SMA 5: %{y:,.2f}<extra></extra>',
             showlegend=False,
         ), row=1, col=1)
-        fig.add_trace(go.Scattergl(
+        fig.add_trace(go.Scatter(
             x=dates, y=df['SMA20'].values, mode='lines', name='SMA 20',
             line=dict(color=sma20_color, width=1.3),
             hovertemplate='SMA 20: %{y:,.2f}<extra></extra>',
