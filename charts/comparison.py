@@ -450,21 +450,8 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
             legendgroup='ichimoku', showlegend=False, hoverinfo='skip',
         ), row=1, col=1)
 
-        # Senkou A & B viền (vẽ chồng lên cloud)
-        fig.add_trace(go.Scatter(
-            x=dates, y=sa.values, mode='lines', name='Senkou A',
-            line=dict(color='rgba(16,185,129,0.65)', width=1),
-            legendgroup='ichimoku', showlegend=False,
-            hovertemplate='Senkou A: %{y:,.2f}<extra></extra>',
-        ), row=1, col=1)
-        fig.add_trace(go.Scatter(
-            x=dates, y=sb.values, mode='lines', name='Senkou B',
-            line=dict(color='rgba(239,68,68,0.65)', width=1),
-            legendgroup='ichimoku', showlegend=False,
-            hovertemplate='Senkou B: %{y:,.2f}<extra></extra>',
-        ), row=1, col=1)
-
-        # Tenkan / Kijun / Chikou
+        # Tenkan / Kijun / Chikou — KHÔNG vẽ Senkou A/B viền vì cloud fill
+        # đã có màu xanh/đỏ rõ; viền thêm chỉ tạo overlap nâu khi cross.
         fig.add_trace(go.Scatter(
             x=dates, y=df['Tenkan'].values, mode='lines', name='Tenkan',
             line=dict(color='#EF4444', width=1.2),
