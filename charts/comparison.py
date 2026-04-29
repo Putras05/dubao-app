@@ -595,14 +595,16 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
         row=1, col=1,
     )
 
-    # Y-axis row 1 (price) — drag/scroll trên thanh để zoom Y (TradingView style)
+    # Y-axis row 1 (price) — drag thanh để zoom Y (TradingView style)
+    # showline + linewidth dày hơn → user thấy rõ thanh axis bên phải để grab
     fig.update_yaxes(
         range=_yrange_price,
         fixedrange=False,
         automargin=True,
         showgrid=True, gridcolor=T['grid'], gridwidth=1,
-        zeroline=False, showline=False,
-        ticks='outside', tickcolor=T['border'], ticklen=6,
+        zeroline=False,
+        showline=True, linecolor=T['border'], linewidth=2,
+        ticks='outside', tickcolor=T['border'], ticklen=8, tickwidth=1.5,
         tickformat=',.1f',
         tickfont=dict(size=11, color=T['text_muted']),
         title=None,
@@ -617,8 +619,9 @@ def chart_price_candlestick(df: pd.DataFrame, ticker: str, T: dict,
         fixedrange=False,
         automargin=True,
         showgrid=True, gridcolor=T['grid'], gridwidth=1,
-        zeroline=False, showline=False,
-        ticks='outside', tickcolor=T['border'], ticklen=6,
+        zeroline=False,
+        showline=True, linecolor=T['border'], linewidth=2,
+        ticks='outside', tickcolor=T['border'], ticklen=8, tickwidth=1.5,
         tickformat='.2s',
         tickfont=dict(size=10, color=T['text_muted']),
         title=dict(text='Volume', font=dict(size=10, color=T['text_muted']), standoff=8),

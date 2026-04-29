@@ -97,7 +97,13 @@ def _candlestick_section(df, ticker, _T, _is_en_cmp):
             'scrollZoom': True,
             'doubleClick': 'reset',
         }
-        st.plotly_chart(fig_cmp, use_container_width=True, config=_candle_config)
+        # key= → Streamlit persist UI state (zoom/pan) khi toggle SMA/Ichimoku
+        st.plotly_chart(
+            fig_cmp,
+            use_container_width=True,
+            config=_candle_config,
+            key=f'candlestick_chart_{ticker}_{_selected_tf}',
+        )
     except Exception as _e:
         st.error(f'Chart error: {_e}')
 
