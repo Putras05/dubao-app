@@ -448,13 +448,12 @@ def _page_chart(pdf, ticker, df, r1, r2, r3, m1, m2, m3, ar_order, lang='VI'):
     # ── PANEL A — Actual vs 3 forecasts (top, full width) ─────────────────
     axA = fig.add_axes([0.08, 0.55, 0.84, 0.30])
     yte = np.asarray(r1['yte'], dtype=float)
-    # Actual đen nhạt + 3 model nhạt hơn nữa → nhìn nhẹ, không "đậm như mực"
-    axA.plot(dates_te, yte, color=_C_TEXT, linewidth=1.0,
-             alpha=0.55,
+    axA.plot(dates_te, yte, color=_C_TEXT, linewidth=1.3,
+             alpha=0.85,
              label=_L('Thực tế', 'Actual', lang), zorder=5)
     for nm, clr, res, m in models:
         axA.plot(dates_te, np.asarray(res['pte'], dtype=float),
-                 color=clr, linewidth=0.6, alpha=0.40,
+                 color=clr, linewidth=1.0, alpha=0.70,
                  label=f'{nm} (MAPE={m["MAPE"]:.2f}%)')
     axA.set_title(_L('A. So sánh dự báo trên tập kiểm tra',
                      'A. Forecast comparison on test set', lang),
@@ -582,13 +581,12 @@ def _page_test_timeseries(pdf, ticker, r1, r2, r3, ar_order, lang='VI'):
         y_true = np.array(res['yte'])
         y_pred = np.array(res['pte'])
         x = np.arange(len(y_true))
-        # Cả actual + prediction đều nhạt — dễ nhìn, không đậm
-        ax.fill_between(x, y_true, y_pred, color=clr, alpha=0.08, zorder=1)
-        ax.plot(x, y_pred, color=clr, linewidth=0.6, linestyle='--',
-                alpha=0.40,
+        ax.fill_between(x, y_true, y_pred, color=clr, alpha=0.10, zorder=1)
+        ax.plot(x, y_pred, color=clr, linewidth=1.0, linestyle='--',
+                alpha=0.70,
                 label=_L(f'Dự báo {nm}', f'Forecast {nm}', lang), zorder=2)
-        ax.plot(x, y_true, color=_C_TEXT, linewidth=0.9,
-                alpha=0.55,
+        ax.plot(x, y_true, color=_C_TEXT, linewidth=1.2,
+                alpha=0.85,
                 label=_L('Thực tế', 'Actual', lang), zorder=3)
 
         ax.set_ylabel(_L('nghìn đ', 'k VND', lang),
@@ -650,19 +648,19 @@ def _page_scatter_coef(pdf, ticker, r1, r2, r3, m1, m2, m3, ar_order, lang='VI')
         ax = fig.add_axes([x0, 0.58, 0.25, 0.25])
         y_true = np.array(res['yte'])
         y_pred = np.array(res['pte'])
-        # Scatter
-        ax.scatter(y_true, y_pred, s=10, color=clr, alpha=0.45,
+        # Scatter — chấm nhạt hơn để KHÔNG che 2 đường fit
+        ax.scatter(y_true, y_pred, s=10, color=clr, alpha=0.28,
                    edgecolor='none', zorder=2)
         _min = min(y_true.min(), y_pred.min())
         _max = max(y_true.max(), y_pred.max())
         _pad = (_max - _min) * 0.05
         _xline = np.array([_min - _pad, _max + _pad])
-        # Ideal y=x line (tham chiếu — xám neutral, không xung đột với OLS đỏ)
+        # Đường y=x lý tưởng (R²=1) — ĐEN đậm, đầy đủ làm reference rõ ràng
         ax.plot(_xline, _xline,
-                color='#94A3B8', linewidth=1.0, linestyle='--',
-                alpha=0.85,
+                color='#0F172A', linewidth=1.4, linestyle='--',
+                alpha=0.95,
                 label=_L('y = x (lý tưởng)', 'y = x (ideal)', lang),
-                zorder=3)
+                zorder=4)
         # OLS fit line — ĐỎ đậm nổi bật trên cả 3 scatter (blue/purple/green)
         try:
             slope, intercept = np.polyfit(y_true, y_pred, 1)
@@ -732,8 +730,7 @@ def _page_scatter_coef(pdf, ticker, r1, r2, r3, m1, m2, m3, ar_order, lang='VI')
               fontsize=11, color=_C_MLR, weight='bold',
               transform=ax_t.transAxes, verticalalignment='bottom')
 
-    # Build MLR equation HORIZONTAL — gom theo nhóm biến (Y/V/HL) trên 1 hàng
-    # mỗi nhóm thay vì xếp dọc 7 dòng (bị dính chart bar bên dưới).
+    # Build MLR equation INLINE 1 dòng — chiếm ít chỗ, font nhỏ vẫn đọc rõ
     mlr_coef = np.array(r2.get('coef', []))
     mlr_intercept = float(r2.get('intercept', 0))
     if len(mlr_coef) == 3 * ar_order:
@@ -741,18 +738,17 @@ def _page_scatter_coef(pdf, ticker, r1, r2, r3, m1, m2, m3, ar_order, lang='VI')
             lab = f'{var_name}(t-{lag})' if lag > 0 else f'{var_name}(t)'
             return f'{coef:+.3e}·{lab}'
 
-        y_part  = '  '.join(_term(mlr_coef[k], 'Y', k)              for k in range(ar_order))
-        v_part  = '  '.join(_term(mlr_coef[ar_order + k], 'V', k)   for k in range(ar_order))
-        hl_part = '  '.join(_term(mlr_coef[2*ar_order + k], 'HL', k) for k in range(ar_order))
-
-        full_eq = (f'Ŷ(t+1) = {mlr_intercept:+.4f}\n'
-                   f'         {y_part}\n'
-                   f'         {v_part}\n'
-                   f'         {hl_part}')
-        ax_t.text(0.08, y_mlr_start - 0.035, full_eq,
-                  fontsize=7.5, color=_C_TEXT, family='DejaVu Sans Mono',
-                  transform=ax_t.transAxes, verticalalignment='top',
-                  linespacing=1.5)
+        terms = (
+            [_term(mlr_coef[k], 'Y',  k) for k in range(ar_order)] +
+            [_term(mlr_coef[ar_order + k], 'V',  k) for k in range(ar_order)] +
+            [_term(mlr_coef[2*ar_order + k], 'HL', k) for k in range(ar_order)]
+        )
+        # 1 dòng đầy đủ — fontsize giảm theo p để vẫn fit page width
+        full_eq = f'Ŷ(t+1) = {mlr_intercept:+.4f}  ' + '  '.join(terms)
+        _eq_fs = 8.5 if ar_order == 1 else (7.0 if ar_order == 2 else 5.8)
+        ax_t.text(0.08, y_mlr_start - 0.025, full_eq,
+                  fontsize=_eq_fs, color=_C_TEXT, family='DejaVu Sans Mono',
+                  transform=ax_t.transAxes, verticalalignment='top')
 
     # MLR coef bar chart — below equations
     if len(mlr_coef) == 3 * ar_order:
