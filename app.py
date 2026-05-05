@@ -68,6 +68,12 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# Splash/cover page: chỉ hiện 1 lần khi user vào app, click "Vào Ngay" để đến main app
+if not st.session_state.get('_splash_done'):
+    from app_pages import splash as _pg_splash
+    _pg_splash.render()
+    st.stop()
+
 # Preload 3 tickers 1 lần duy nhất mỗi session → UX mượt hơn
 from core.preload import preload_all_tickers, trigger_bg_cart
 preload_all_tickers()
