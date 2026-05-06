@@ -12,81 +12,108 @@ def _img_b64(filename: str) -> str:
 
 
 def render():
-    """Hiển thị splash/cover page với 2 logo, tên đề tài, GVHD, nhóm tác giả và nút Vào Ngay."""
+    """Splash/cover page — navy theme, logo nền trong suốt, hợp với app."""
 
-    tdt_b64 = _img_b64('TDT_logo.jpg')
-    khoa_b64 = _img_b64('khoa_logo.jpg')
+    tdt_b64 = _img_b64('TDT_logo.png')
+    khoa_b64 = _img_b64('khoa_logo.png')
 
     st.markdown("""
     <style>
         /* Ẩn sidebar trong splash */
         [data-testid="stSidebar"], [data-testid="collapsedControl"] { display: none !important; }
-        /* Toàn bộ background gradient */
-        .stApp { background: linear-gradient(180deg, #EFF6FF 0%, #DBEAFE 100%) !important; }
+        /* Toàn bộ background — gradient navy như app */
+        .stApp {
+            background:
+                radial-gradient(circle at 18% 12%, rgba(37,99,235,0.22) 0, transparent 45%),
+                radial-gradient(circle at 82% 88%, rgba(30,64,175,0.28) 0, transparent 50%),
+                linear-gradient(160deg, #0B1B3D 0%, #0F2A5C 45%, #122F66 100%) !important;
+            color: #E2E8F0 !important;
+        }
         /* Container splash */
         .splash-wrap {
-            max-width: 760px; margin: 0 auto; padding: 40px 20px 20px;
+            max-width: 780px; margin: 0 auto; padding: 50px 20px 30px;
             text-align: center;
         }
         .splash-logos {
             display: flex; justify-content: space-between; align-items: center;
-            gap: 20px; margin-bottom: 18px;
+            gap: 24px; margin-bottom: 20px;
         }
-        .splash-logos img { height: 92px; width: auto; }
+        /* Logo PNG đã transparent — không cần khung trắng */
+        .splash-logos img {
+            height: 100px; width: auto;
+            filter: drop-shadow(0 4px 12px rgba(0,0,0,0.25));
+        }
         .splash-univ {
-            font-weight: 800; color: #1E3A8A; font-size: 18px; line-height: 1.4;
+            font-weight: 800; color: #FFFFFF; font-size: 18px; line-height: 1.45;
+            letter-spacing: 0.6px; text-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+        .splash-univ .small {
+            font-size: 14px; font-weight: 600; color: #93C5FD;
+            letter-spacing: 1.2px;
+        }
+        .splash-title {
+            font-weight: 900; color: #FFFFFF; font-size: 24px; line-height: 1.45;
+            margin: 28px 0 10px; letter-spacing: 0.5px;
+            text-shadow: 0 2px 14px rgba(37,99,235,0.45);
+        }
+        .splash-title .accent { color: #FBBF24; }
+        .splash-sub {
+            color: #94A3B8; font-size: 13px; margin-bottom: 28px;
             letter-spacing: 0.5px;
         }
-        .splash-univ .small { font-size: 14px; font-weight: 600; color: #334155; }
-        .splash-title {
-            font-weight: 900; color: #B91C1C; font-size: 22px; line-height: 1.4;
-            margin: 22px 0 8px; letter-spacing: 0.4px;
-        }
-        .splash-sub { color: #64748B; font-size: 13px; margin-bottom: 24px; }
+        /* Card glass-morphism trên nền navy */
         .splash-card {
-            background: white; border: 1px solid #DBEAFE; border-radius: 16px;
-            padding: 22px 24px; margin: 18px auto; max-width: 520px;
-            box-shadow: 0 6px 20px rgba(30,58,138,0.08);
+            background: rgba(255,255,255,0.06);
+            backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+            border: 1px solid rgba(147,197,253,0.18);
+            border-radius: 16px;
+            padding: 22px 26px; margin: 16px auto; max-width: 540px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.18),
+                        inset 0 1px 0 rgba(255,255,255,0.05);
         }
         .splash-card .label {
-            font-size: 12px; font-weight: 700; color: #1E3A8A;
-            text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 6px;
+            font-size: 11px; font-weight: 700; color: #93C5FD;
+            text-transform: uppercase; letter-spacing: 1.8px; margin-bottom: 8px;
         }
         .splash-card .value {
-            font-size: 15px; color: #0F172A; font-weight: 600; line-height: 1.7;
+            font-size: 15px; color: #F1F5F9; font-weight: 600; line-height: 1.75;
         }
-        /* Nút Vào Ngay — style trực tiếp st.button */
+        /* Nút Vào Ngay */
         div[data-testid="stButton"] > button {
-            background: #1E3A8A !important; color: white !important;
+            background: linear-gradient(135deg,#2563EB 0%,#1E40AF 100%) !important;
+            color: #FFFFFF !important;
             font-weight: 800 !important; font-size: 16px !important;
-            padding: 14px 36px !important; border-radius: 12px !important;
-            border: none !important; letter-spacing: 1px !important;
-            box-shadow: 0 6px 16px rgba(30,58,138,0.25) !important;
+            padding: 14px 38px !important; border-radius: 12px !important;
+            border: 1px solid rgba(147,197,253,0.35) !important;
+            letter-spacing: 1.5px !important;
+            box-shadow: 0 8px 24px rgba(37,99,235,0.40),
+                        inset 0 1px 0 rgba(255,255,255,0.18) !important;
             transition: all 0.2s ease !important;
             width: 100%; max-width: 320px;
         }
         div[data-testid="stButton"] > button:hover {
-            background: #1E40AF !important;
+            background: linear-gradient(135deg,#3B82F6 0%,#2563EB 100%) !important;
             transform: translateY(-2px);
-            box-shadow: 0 10px 22px rgba(30,58,138,0.35) !important;
+            box-shadow: 0 12px 30px rgba(37,99,235,0.55),
+                        inset 0 1px 0 rgba(255,255,255,0.25) !important;
         }
-        div[data-testid="stButton"] { display: flex; justify-content: center; margin-top: 28px; }
+        div[data-testid="stButton"] { display: flex; justify-content: center; margin-top: 30px; }
     </style>
     """, unsafe_allow_html=True)
 
     logo_html = f"""
     <div class="splash-wrap">
         <div class="splash-logos">
-            <img src="data:image/jpeg;base64,{tdt_b64}" alt="TDTU"/>
+            <img src="data:image/png;base64,{tdt_b64}" alt="TDTU"/>
             <div class="splash-univ">
                 TRƯỜNG ĐẠI HỌC TÔN ĐỨC THẮNG<br/>
                 <span class="small">KHOA TOÁN -- THỐNG KÊ</span>
             </div>
-            <img src="data:image/jpeg;base64,{khoa_b64}" alt="Faculty of Mathematics and Statistics"/>
+            <img src="data:image/png;base64,{khoa_b64}" alt="Faculty of Mathematics and Statistics"/>
         </div>
         <div class="splash-sub">Công trình Nghiên cứu khoa học sinh viên năm học 2025--2026</div>
         <div class="splash-title">
-            XÂY DỰNG CHATBOT PHÂN TÍCH VÀ DỰ BÁO<br/>
+            <span class="accent">XÂY DỰNG CHATBOT</span> PHÂN TÍCH VÀ DỰ BÁO<br/>
             CHỨNG KHOÁN DỰA TRÊN MÔ HÌNH<br/>
             THỐNG KÊ VÀ HỌC MÁY
         </div>
