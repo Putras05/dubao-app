@@ -502,5 +502,68 @@ def run() -> None:
     return (p1, t1, f1), (p2, t2, f2), (p3, t3, f3), (p4, t4, f4)
 
 
+def _smoke_imports():
+    """Smoke-test that the new modules import + tool registry is well-formed.
+    Runs in addition to the math-render harness; failures raise.
+    """
+    print("-" * 70)
+    print("  Set: Module-import smoke tests (new chatbot v2 modules)")
+    print("-" * 70)
+    failed = 0
+
+    try:
+        from core import chatbot_tools as ct
+        assert hasattr(ct, 'AVAILABLE_TOOLS') and isinstance(ct.AVAILABLE_TOOLS, list)
+        assert len(ct.AVAILABLE_TOOLS) >= 6, f"only {len(ct.AVAILABLE_TOOLS)} tools registered"
+        names = [f.__name__ for f in ct.AVAILABLE_TOOLS]
+        assert 'get_current_ticker_data' in names
+        assert 'get_forecast_results' in names
+        assert 'get_technical_signals' in names
+        assert 'plot_price_chart' in names
+        # has_state should be False before set_app_state
+        assert ct.has_state() is False
+        # Each tool must be callable + return dict-ish on empty state
+        for fn in ct.AVAILABLE_TOOLS:
+            try:
+                # Pass dummy positional safe defaults where needed
+                if fn.__name__ == 'compute_metric':
+                    res = fn('MAPE', 'ar')
+                elif fn.__name__ == 'switch_ticker':
+                    res = fn('FPT')
+                elif fn.__name__ == 'plot_price_chart':
+                    res = fn(30, True)
+                elif fn.__name__ == 'get_price_history':
+                    res = fn(30)
+                else:
+                    res = fn()
+                assert isinstance(res, dict), f"{fn.__name__} did not return dict"
+            except Exception as e:
+                failed += 1
+                print(f"  [FAIL] tool {fn.__name__} raised: {e}")
+                continue
+        print(f"  [PASS] core.chatbot_tools imports + {len(ct.AVAILABLE_TOOLS)} tools callable")
+    except Exception as e:
+        failed += 1
+        print(f"  [FAIL] core.chatbot_tools import: {e}")
+
+    try:
+        from core import chatbot_stream as cs
+        assert hasattr(cs, 'stream_answer')
+        assert hasattr(cs, 'is_streaming_available')
+        # is_streaming_available may return False (no API key in test env) — that's fine
+        ok = cs.is_streaming_available()
+        print(f"  [PASS] core.chatbot_stream imports (is_streaming_available={ok})")
+    except Exception as e:
+        failed += 1
+        print(f"  [FAIL] core.chatbot_stream import: {e}")
+
+    print(f"  Smoke subtotal: {2 - failed}/2 PASS, {failed} FAIL")
+    return failed == 0
+
+
 if __name__ == "__main__":
     run()
+    ok = _smoke_imports()
+    if not ok:
+        import sys as _s
+        _s.exit(1)
