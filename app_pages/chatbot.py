@@ -321,7 +321,7 @@ def _md_to_html(text: str) -> str:
     if in_ol: out.append('</ol>')
     html_str = '\n'.join(out)
 
-    # ── Post-process: restore fenced code blocks ──
+    # ── Post-process: restore fenced code blocks (real code, not math) ──
     for idx, code in enumerate(code_blocks):
         rendered = (
             '<pre style="background:rgba(100,116,139,.10);'
@@ -333,28 +333,97 @@ def _md_to_html(text: str) -> str:
         )
         html_str = html_str.replace(f'\x00CODEBLOCK{idx}\x00', rendered)
 
-    # ── Post-process: restore $$...$$ block math (as styled box) ──
+    # ── Post-process: restore math blocks as RAW $$...$$ + $...$ ──
+    # KaTeX auto-render scans parent DOM and renders these. Wrap in
+    # styled container with class="katex-block-wrap" / "katex-inline-wrap"
+    # for visual fallback + skip-tag protection.
     for idx, math in enumerate(math_blocks):
-        rendered = (
-            '<div style="background:rgba(96,165,250,.06);'
-            'border-left:3px solid rgba(96,165,250,.45);'
-            'padding:8px 14px;margin:.5em 0;'
-            'font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;'
-            'font-size:.96em;text-align:center;overflow-x:auto">'
-            f'{_hlib.escape(math)}</div>'
-        )
+        # Use \[ ... \] as alternate delimiter — easier to escape and KaTeX
+        # auto-render handles it natively. Content stays raw LaTeX (no html escape).
+        rendered = f'<span class="math-block">$${math}$$</span>'
         html_str = html_str.replace(f'\x00MATHBLOCK{idx}\x00', rendered)
 
-    # ── Post-process: restore $...$ inline math (as inline code w/ tint) ──
     for idx, math in enumerate(math_inline):
-        rendered = (
-            '<code style="background:rgba(96,165,250,.10);'
-            'padding:1px 5px;border-radius:3px;'
-            f'font-size:.95em">{_hlib.escape(math)}</code>'
-        )
+        rendered = f'<span class="math-inline">${math}$</span>'
         html_str = html_str.replace(f'\x00MATHINLINE{idx}\x00', rendered)
 
     return html_str
+
+
+def _inject_katex_once():
+    """Inject KaTeX CSS + JS auto-render. Idempotent — gated by session_state.
+
+    KaTeX runs in iframe (via components.html) and accesses parent document
+    to find $...$ / $$...$$ delimiters in the rendered chat bubbles, then
+    replaces them in-place with proper math typography.
+    """
+    if st.session_state.get('_katex_injected'):
+        # Already injected this session — just trigger re-render for new content
+        _katex_rerender_only()
+        return
+    st.session_state['_katex_injected'] = True
+
+    # CSS link via st.markdown — sanitizer allows <link>
+    st.markdown(
+        '<link rel="stylesheet" '
+        'href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">',
+        unsafe_allow_html=True,
+    )
+    _katex_rerender_only(initial=True)
+
+
+def _katex_rerender_only(initial: bool = False):
+    """Trigger KaTeX auto-render in parent DOM via components iframe.
+
+    Loads KaTeX scripts (cached after first use) and calls renderMathInElement.
+    Re-runs every chatbot render to handle new bot messages.
+    """
+    import streamlit.components.v1 as components
+    components.html(
+        """
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+<script>
+(function() {
+  function renderNow() {
+    try {
+      const doc = window.parent && window.parent.document;
+      if (!doc) return;
+      // Inject KaTeX CSS into parent <head> if not already
+      if (!doc.querySelector('link[href*="katex.min.css"]')) {
+        const link = doc.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css';
+        doc.head.appendChild(link);
+      }
+      if (typeof renderMathInElement !== 'function') {
+        return setTimeout(renderNow, 80);
+      }
+      renderMathInElement(doc.body, {
+        delimiters: [
+          {left: '$$', right: '$$', display: true},
+          {left: '$',  right: '$',  display: false},
+          {left: '\\\\[', right: '\\\\]', display: true},
+          {left: '\\\\(', right: '\\\\)', display: false}
+        ],
+        throwOnError: false,
+        errorColor: '#cc4444',
+        ignoredTags: ['script','noscript','style','textarea','pre','code'],
+        ignoredClasses: ['no-katex']
+      });
+    } catch(e) {
+      try { console.warn('[KaTeX]', e); } catch(_) {}
+    }
+  }
+  // Multiple retries: KaTeX scripts load async + Streamlit may add bubbles after
+  setTimeout(renderNow, 50);
+  setTimeout(renderNow, 300);
+  setTimeout(renderNow, 800);
+})();
+</script>
+""",
+        height=0,
+    )
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -886,6 +955,11 @@ def render(ticker, train_ratio, date_from, date_to, df, r1, r2, r3, m1, m2, m3, 
     # data-testid có thể xuất hiện:
     # - stBaseButton-primary / stBaseButton-secondary / stBaseButton-tertiary
     # - baseButton-primary / baseButton-secondary (legacy versions)
+    # PERF: cache CSS block per theme (light/dark) trong session_state.
+    # Rebuild f-string ~700 lines mỗi rerun là bottleneck → cache 1 lần dùng lại.
+    _css_cache_key = '_chatbot_css_dark' if _is_dark else '_chatbot_css_light'
+    _cached_css = st.session_state.get(_css_cache_key)
+
     _bg_btn     = _T['bg_elevated']
     _fg_btn     = _T['text_primary']
     _brd_btn    = _T['border_strong']
@@ -924,7 +998,8 @@ def render(ticker, train_ratio, date_from, date_to, df, r1, r2, r3, m1, m2, m3, 
         f"%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E"
     )
 
-    _css_block = f"""<style>
+    if not _cached_css:
+        _css_block = f"""<style>
 /* ═══════════════════════════════════════════════════════════
    STICKY SIDEBAR
    ═══════════════════════════════════════════════════════════ */
@@ -1604,7 +1679,14 @@ html body [data-testid="stSidebar"] [data-testid="stTextInput"] input::-webkit-i
 }}
 </style>
 """
+        st.session_state[_css_cache_key] = _css_block
+    else:
+        _css_block = _cached_css
+
     st.markdown(_css_block, unsafe_allow_html=True)
+
+    # KaTeX injection — render $...$ và $$...$$ thành công thức toán thật
+    _inject_katex_once()
 
     col_sb, col_chat = st.columns([1, 3], gap='medium')
 
