@@ -419,9 +419,9 @@ def _process_query(query: str, context: dict, ar_order: int,
         if cached:
             return cached, diagram_html
 
-    # ── 4. GỌI AI — luôn cho AI trả lời thật ─────────────────
+    # ── 4. GỌI AI (với self-review gated) — luôn cho AI trả lời thật ─
     if ai_ok:
-        ai_resp = _ai_answer_with_retry(query, context, lang)
+        ai_resp = _ai_answer_with_review(query, context, lang)
         if ai_resp:
             if not _is_data_q:
                 cache.set(query, context, ai_resp, lang)
@@ -512,6 +512,143 @@ def _format_history_prefix(history: list, lang: str) -> str:
     else:
         header = '## HỘI THOẠI GẦN ĐÂY (gần nhất ở dưới):'
     return header + '\n' + '\n'.join(lines) + '\n\n'
+
+
+# ═══════════════════════════════════════════════════════════════
+# SELF-REVIEW (Reflexion pattern) — bot tự critique + refine answer
+# Trigger gated: chỉ chạy cho câu data + high-stakes (buy/sell/forecast/compare)
+# ═══════════════════════════════════════════════════════════════
+ENABLE_SELF_REVIEW = True   # feature flag — set False để revert nhanh
+
+
+def _should_self_review(query: str, draft: str, context: dict) -> bool:
+    """Trigger self-review chỉ khi đáng đầu tư thêm 1-2 calls AI."""
+    if not ENABLE_SELF_REVIEW:
+        return False
+    q = _strip_diacritics_simple((query or '').lower())
+    if not _is_data_dependent(query):
+        return False
+    high_stakes_kw = [
+        'nen mua', 'nen ban', 'should i', 'buy', 'sell', 'hold',
+        'du bao', 'forecast', 'phan tich', 'so sanh', 'compare',
+        'tom tat', 'review', 'tinh hinh', 'overview',
+    ]
+    if not any(k in q for k in high_stakes_kw):
+        return False
+    if not draft or len(draft) < 120:
+        return False
+    if not context or 'close_vnd' not in context:
+        return False
+    # Skip nếu Gemini đang rate-limited — không phí thêm call
+    if int(st.session_state.get('_last_gemini_retry_s', 0)) > 0:
+        return False
+    return True
+
+
+def _build_critique_prompt(query: str, draft: str, context: dict, lang: str) -> str:
+    """Prompt yêu cầu AI review chính bản nháp."""
+    from core.chatbot_ai import build_context_string
+    ctx_str = build_context_string(context or {})
+    if lang == 'EN':
+        return (
+            f"You just wrote the following draft answer for the user. Review YOUR OWN draft.\n\n"
+            f"[DRAFT]\n{draft}\n\n"
+            f"[ORIGINAL DATA]\n{ctx_str}\n\n"
+            f"[USER QUESTION]\n{query}\n\n"
+            f"Check 3 criteria:\n"
+            f"1. NUMBERS: do all numbers in the DRAFT match the ORIGINAL DATA? (price, MAPE, forecasts)\n"
+            f"2. COMPLETENESS: does it actually answer the question? what's missing?\n"
+            f"3. DISCLAIMER: if user asked buy/sell and the disclaimer is missing → flag.\n\n"
+            f"Reply EXACTLY in this format:\n"
+            f"- If OK: just write 'OK'\n"
+            f"- If issues: list 1-3 specific issues, one per line, starting with '- '\n"
+            f"DO NOT rewrite the answer. Just critique."
+        )
+    return (
+        f"Bạn vừa viết câu trả lời sau cho user. Review CHÍNH BẢN NHÁP của bạn.\n\n"
+        f"[DRAFT]\n{draft}\n\n"
+        f"[DỮ LIỆU GỐC]\n{ctx_str}\n\n"
+        f"[CÂU HỎI USER]\n{query}\n\n"
+        f"Kiểm tra 3 tiêu chí:\n"
+        f"1. SỐ LIỆU: mọi con số trong DRAFT có khớp DỮ LIỆU GỐC? (giá, MAPE, dự báo)\n"
+        f"2. ĐẦY ĐỦ: có trả lời đúng câu user hỏi? thiếu điểm nào?\n"
+        f"3. CẢNH BÁO: nếu user hỏi mua/bán mà thiếu disclaimer NCKH → flag.\n\n"
+        f"Trả lời CHÍNH XÁC theo format:\n"
+        f"- Nếu OK: chỉ ghi 'OK'\n"
+        f"- Nếu có vấn đề: liệt kê 1-3 issue cụ thể, mỗi issue 1 dòng bắt đầu '- '\n"
+        f"KHÔNG viết lại câu trả lời, chỉ critique."
+    )
+
+
+def _build_refine_prompt(draft: str, critique: str, lang: str) -> str:
+    """Prompt yêu cầu AI viết lại draft theo critique."""
+    if lang == 'EN':
+        return (
+            f"Here is your draft answer:\n[DRAFT]\n{draft}\n\n"
+            f"A reviewer flagged these issues:\n[ISSUES]\n{critique}\n\n"
+            f"Rewrite the answer fixing every issue. Keep the same style "
+            f"(short, light markdown, ≤4 paragraphs, formulas in backticks/fenced blocks). "
+            f"DO NOT mention the reviewer."
+        )
+    return (
+        f"Đây là câu trả lời nháp của bạn:\n[DRAFT]\n{draft}\n\n"
+        f"Reviewer đã chỉ ra các vấn đề:\n[ISSUES]\n{critique}\n\n"
+        f"Viết lại câu trả lời, sửa hết các vấn đề trên. Giữ nguyên phong cách "
+        f"(ngắn gọn, markdown nhẹ, ≤4 đoạn, công thức trong backtick/fenced block). "
+        f"KHÔNG nhắc đến reviewer."
+    )
+
+
+def _ai_answer_with_review(query: str, context: dict, lang: str) -> str | None:
+    """Wrap _ai_answer_with_retry với self-review chain.
+
+    Pattern: Generate → (Critique → Refine) chỉ khi đáng. Hard cap 3 LLM calls.
+    Fail-open: bất kỳ bước critique/refine nào fail → return draft nguyên bản.
+    """
+    # Step 1: Generate (existing path)
+    draft = _ai_answer_with_retry(query, context, lang)
+    if not draft:
+        return None
+    if not _should_self_review(query, draft, context):
+        return draft
+
+    # Step 2: Critique
+    try:
+        with st.spinner('● ● ● ' + (t('chatbot.thinking') if lang == 'VI' else 'Reviewing answer...')):
+            critique = ask_gemini(
+                _build_critique_prompt(query, draft, context, lang),
+                context=None, lang=lang, slim_system=True,
+            )
+    except (RateLimitError, QuotaExhaustedError):
+        return draft
+    except Exception as e:
+        _log(f'[Self-Review] critique error: {str(e)[:120]}')
+        return draft
+
+    if not critique:
+        return draft
+    c = critique.strip()
+    if c.upper().startswith('OK') or len(c) < 20:
+        return draft
+    # Critique phải có ít nhất 1 dòng bắt đầu "-" → mới đáng refine
+    if not any(line.strip().startswith('-') for line in c.splitlines()):
+        return draft
+
+    # Step 3: Refine
+    try:
+        with st.spinner('● ● ● ' + (t('chatbot.thinking') if lang == 'VI' else 'Refining...')):
+            refined = ask_gemini(
+                _build_refine_prompt(draft, c, lang),
+                context=context, lang=lang,
+            )
+    except Exception as e:
+        _log(f'[Self-Review] refine error: {str(e)[:120]}')
+        return draft
+
+    if refined and refined.strip():
+        _log('[Self-Review] refined applied')
+        return refined.strip()
+    return draft
 
 
 def _ai_answer_with_retry(query: str, context: dict, lang: str) -> str | None:

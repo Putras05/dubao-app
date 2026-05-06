@@ -183,19 +183,82 @@ def _strip_legacy_html(text: str) -> str:
 
 
 def _md_to_html(text: str) -> str:
-    """Convert markdown text to safe HTML using stdlib only (re + html)."""
+    """Convert markdown to safe HTML — supports fenced code, tables, math, lists, headings.
+
+    v7 additions:
+      - ``` fenced code blocks (multi-line, monospace, scrollable)
+      - markdown tables | col | col | with |---| separator
+      - $$ block math $$ → centered code-style block
+      - $ inline math $  → inline code with subtle highlight
+      - All preserve raw text (no markdown re-processing inside).
+    """
     import re
     import html as _hlib
 
     text = _strip_legacy_html(text)
+
+    # ── Pre-process: extract fenced code blocks first (highest priority) ──
+    code_blocks = []
+    def _stash_code(m):
+        code_blocks.append(m.group(1))
+        return f'\x00CODEBLOCK{len(code_blocks)-1}\x00'
+    text = re.sub(r'```[a-zA-Z0-9_+\-]*\n?(.*?)\n?```',
+                  _stash_code, text, flags=re.DOTALL)
+
+    # ── Pre-process: extract $$...$$ block math ──
+    math_blocks = []
+    def _stash_math_block(m):
+        math_blocks.append(m.group(1).strip())
+        return f'\x00MATHBLOCK{len(math_blocks)-1}\x00'
+    text = re.sub(r'\$\$(.+?)\$\$', _stash_math_block, text, flags=re.DOTALL)
+
+    # ── Pre-process: extract $...$ inline math ──
+    # Conservative: content non-empty, no internal $ or newline, no whitespace at edges
+    math_inline = []
+    def _stash_math_inline(m):
+        math_inline.append(m.group(1))
+        return f'\x00MATHINLINE{len(math_inline)-1}\x00'
+    text = re.sub(r'(?<!\\)\$([^\s$][^$\n]*?[^\s$]|\S)\$', _stash_math_inline, text)
+
     lines = text.split('\n')
     out = []
     in_ul = False
     in_ol = False
     ol_counter = 1
 
-    for line in lines:
-        raw = line
+    i = 0
+    while i < len(lines):
+        raw = lines[i]
+
+        # ── Table: |col|col| then |---|---| separator → render <table> ──
+        if (re.match(r'^\s*\|.+\|\s*$', raw) and i + 1 < len(lines)
+                and re.match(r'^\s*\|[\s:|\-]+\|\s*$', lines[i + 1])):
+            if in_ul: out.append('</ul>'); in_ul = False
+            if in_ol: out.append('</ol>'); in_ol = False; ol_counter = 1
+            header_cells = [c.strip() for c in raw.strip().strip('|').split('|')]
+            i += 2  # skip header + separator
+            rows = []
+            while i < len(lines) and re.match(r'^\s*\|.+\|\s*$', lines[i]):
+                rows.append([c.strip() for c in lines[i].strip().strip('|').split('|')])
+                i += 1
+            tbl = ['<table style="border-collapse:collapse;margin:.5em 0;'
+                   'font-size:.93em;width:auto">']
+            tbl.append('<thead><tr>')
+            for c in header_cells:
+                tbl.append(f'<th style="border:1px solid rgba(100,116,139,.3);'
+                           f'padding:5px 10px;text-align:left;'
+                           f'background:rgba(100,116,139,.08);font-weight:600">'
+                           f'{_inline_md(_hlib.escape(c))}</th>')
+            tbl.append('</tr></thead><tbody>')
+            for row in rows:
+                tbl.append('<tr>')
+                for c in row:
+                    tbl.append(f'<td style="border:1px solid rgba(100,116,139,.3);'
+                               f'padding:5px 10px">{_inline_md(_hlib.escape(c))}</td>')
+                tbl.append('</tr>')
+            tbl.append('</tbody></table>')
+            out.append(''.join(tbl))
+            continue
 
         # Headings
         if re.match(r'^#{4}\s', raw):
@@ -240,15 +303,58 @@ def _md_to_html(text: str) -> str:
             if in_ol: out.append('</ol>'); in_ol = False; ol_counter = 1
             out.append('')
 
+        # Block placeholder (fenced code / block math) — output raw, no <p>
+        elif re.match(r'^\s*\x00(CODEBLOCK|MATHBLOCK)\d+\x00\s*$', raw):
+            if in_ul: out.append('</ul>'); in_ul = False
+            if in_ol: out.append('</ol>'); in_ol = False; ol_counter = 1
+            out.append(raw.strip())
+
         # Normal paragraph line
         else:
             if in_ul: out.append('</ul>'); in_ul = False
             if in_ol: out.append('</ol>'); in_ol = False; ol_counter = 1
             out.append(f'<p style="margin:.25em 0">{_inline_md(_hlib.escape(raw))}</p>')
 
+        i += 1
+
     if in_ul: out.append('</ul>')
     if in_ol: out.append('</ol>')
-    return '\n'.join(out)
+    html_str = '\n'.join(out)
+
+    # ── Post-process: restore fenced code blocks ──
+    for idx, code in enumerate(code_blocks):
+        rendered = (
+            '<pre style="background:rgba(100,116,139,.10);'
+            'border:1px solid rgba(100,116,139,.20);border-radius:6px;'
+            'padding:8px 12px;margin:.4em 0;overflow-x:auto;'
+            'font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;'
+            'font-size:.92em;line-height:1.5;white-space:pre">'
+            f'<code>{_hlib.escape(code)}</code></pre>'
+        )
+        html_str = html_str.replace(f'\x00CODEBLOCK{idx}\x00', rendered)
+
+    # ── Post-process: restore $$...$$ block math (as styled box) ──
+    for idx, math in enumerate(math_blocks):
+        rendered = (
+            '<div style="background:rgba(96,165,250,.06);'
+            'border-left:3px solid rgba(96,165,250,.45);'
+            'padding:8px 14px;margin:.5em 0;'
+            'font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;'
+            'font-size:.96em;text-align:center;overflow-x:auto">'
+            f'{_hlib.escape(math)}</div>'
+        )
+        html_str = html_str.replace(f'\x00MATHBLOCK{idx}\x00', rendered)
+
+    # ── Post-process: restore $...$ inline math (as inline code w/ tint) ──
+    for idx, math in enumerate(math_inline):
+        rendered = (
+            '<code style="background:rgba(96,165,250,.10);'
+            'padding:1px 5px;border-radius:3px;'
+            f'font-size:.95em">{_hlib.escape(math)}</code>'
+        )
+        html_str = html_str.replace(f'\x00MATHINLINE{idx}\x00', rendered)
+
+    return html_str
 
 
 # ═══════════════════════════════════════════════════════════════
