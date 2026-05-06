@@ -270,6 +270,47 @@ def _():
 
 
 # ─────────────────────────────────────────────────────────────────
+# Phase-1 (v13) — model coefficients in context + tighter theory gate
+# ─────────────────────────────────────────────────────────────────
+@test('26: _is_theory_query("công thức của FPT là gì?") returns False (data signal)')
+def _():
+    from core.chatbot_logic import _is_theory_query
+    assert _is_theory_query('công thức của FPT là gì?') is False, (
+        'FPT mention should disqualify as pure-theory'
+    )
+
+
+@test('27: _is_theory_query("AR(1) là gì?") returns True')
+def _():
+    from core.chatbot_logic import _is_theory_query
+    assert _is_theory_query('AR(1) là gì?') is True
+
+
+@test('28: _is_theory_query("Python list comprehension là gì?") returns True')
+def _():
+    from core.chatbot_logic import _is_theory_query
+    assert _is_theory_query('Python list comprehension là gì?') is True, (
+        'general-purpose theory question should pass (no data signal)'
+    )
+
+
+@test('29: build_context_string with ar_coefs renders c=1.5000 + φ_1 = 0.9800')
+def _():
+    from core.chatbot_ai import build_context_string
+    out = build_context_string({'ar_coefs': {'intercept': 1.5, 'phi': [0.98]}})
+    assert 'c = 1.5000' in out, f'intercept missing: {out!r}'
+    assert 'φ_1 = 0.9800' in out, f'phi_1 missing: {out!r}'
+
+
+@test('30: PROMPT_VERSION starts with v13')
+def _():
+    from core.chatbot_ai import PROMPT_VERSION
+    assert PROMPT_VERSION.startswith('v13'), (
+        f'Expected v13.. for Phase-1, got {PROMPT_VERSION}'
+    )
+
+
+# ─────────────────────────────────────────────────────────────────
 # Run
 # ─────────────────────────────────────────────────────────────────
 def main():

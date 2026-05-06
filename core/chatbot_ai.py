@@ -14,7 +14,7 @@ import streamlit as st
 # ═══════════════════════════════════════════════════════════════
 # PROMPT VERSION — bump khi đổi system prompt để invalidate cache cũ
 # ═══════════════════════════════════════════════════════════════
-PROMPT_VERSION = 'v12-2026-05-06-general-purpose'
+PROMPT_VERSION = 'v13-2026-05-06-coefs'
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -33,6 +33,8 @@ Phong cách:
 - Khi giải thích công thức toán, dùng $...$ cho inline math và $$...$$ cho display math (LaTeX chuẩn).
 - Code thì dùng fenced block ```python / ```js / etc. — app sẽ tự highlight cú pháp.
 - Khi user hỏi về tư vấn đầu tư cụ thể (mua/bán) → chia sẻ tín hiệu app, kèm câu nhắc "đây là kết quả NCKH, chỉ tham khảo học thuật, không phải tư vấn đầu tư".
+- Khi user hỏi tính toán/dự báo cho mã hiện tại, hãy dùng `ar_coefs`/`mlr_coefs`/`ar_equation_str` trong context để thay vào công thức và tính ra giá cụ thể. Đừng nói "không có thông tin về β" — context luôn có sẵn hệ số khi mô hình đã fit.
+- Khi trình bày phương trình ước lượng, dùng số thực từ `ar_equation_str` thay vì để symbol.
 
 Khi user hỏi về FPT/HPG/VNM hoặc dữ liệu app, gọi các tool sau (đừng đoán số):
 - get_current_ticker_data, get_forecast_results, get_technical_signals,
@@ -53,6 +55,8 @@ Style:
 - For math, use $...$ for inline and $$...$$ for display LaTeX.
 - For code, use fenced blocks like ```python / ```js — the app syntax-highlights them.
 - For specific buy/sell advice, share the app's signals and close with "this is research output, academic reference only, not investment advice".
+- When the user asks for a calculation/forecast for the current ticker, you MUST use `ar_coefs`/`mlr_coefs`/`ar_equation_str` from context to plug numbers into the formula and produce a concrete VND figure. DO NOT say "I don't have information about β" — the coefficients are always available when the model is fit.
+- When presenting the estimated equation, use real numbers from `ar_equation_str` instead of leaving symbols.
 
 When asked about FPT/HPG/VNM or app data, call:
 - get_current_ticker_data, get_forecast_results, get_technical_signals,
@@ -214,6 +218,44 @@ def build_context_string(context: dict) -> str:
         else:
             lines.append(f"- Tín hiệu Ichimoku: {ichi.get('label','?')} "
                          f"(score {ichi.get('score',0)}/5)")
+
+    # ── MODEL COEFFICIENTS — bot needs these to compute concrete forecasts ──
+    if 'ar_coefs' in context:
+        ac = context['ar_coefs']
+        phi_list = ', '.join(f'φ_{i+1} = {v:.4f}' for i, v in enumerate(ac.get('phi', [])))
+        if lang == 'EN':
+            lines.append(f"- AR(p) coefficients: c = {ac['intercept']:.4f}, {phi_list}")
+        else:
+            lines.append(f"- Hệ số AR(p) ước lượng: c = {ac['intercept']:.4f}, {phi_list}")
+
+    if 'ar_equation_str' in context:
+        if lang == 'EN':
+            lines.append(f"- Estimated AR equation: ${context['ar_equation_str']}$")
+        else:
+            lines.append(f"- Phương trình AR ước lượng: ${context['ar_equation_str']}$")
+
+    if 'mlr_coefs' in context:
+        mc = context['mlr_coefs']
+        if lang == 'EN':
+            lines.append(f"- MLR coefficients: intercept = {mc['intercept']:.4f}, "
+                         f"price_lags = {mc['price_lags']}, "
+                         f"volume_lags = {mc['volume_lags']}, "
+                         f"range_lags = {mc['range_lags']}")
+        else:
+            lines.append(f"- Hệ số MLR: intercept = {mc['intercept']:.4f}, "
+                         f"price_lags = {mc['price_lags']}, "
+                         f"volume_lags = {mc['volume_lags']}, "
+                         f"range_lags = {mc['range_lags']}")
+
+    if 'cart_summary' in context:
+        cs = context['cart_summary']
+        top = ', '.join(f'{name} ({imp:.1f}%)' for name, imp in cs.get('top_features', []))
+        if lang == 'EN':
+            lines.append(f"- CART: depth = {cs['depth']}, leaves = {cs['n_leaves']}, "
+                         f"top features: {top}")
+        else:
+            lines.append(f"- CART: độ sâu = {cs['depth']}, số lá = {cs['n_leaves']}, "
+                         f"feature quan trọng: {top}")
 
     return '\n'.join(lines)
 

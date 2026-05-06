@@ -155,6 +155,85 @@ def _build_context(ticker, r1, r2, r3, m1, m2, m3, df, ar_order):
     if _ichi:
         ctx['ichimoku'] = _ichi
 
+    # ── AR(p) coefficients (r1) ────────────────────────────────
+    # Bot needs the actual phi/intercept to plug into Ŷ_{t+1} = c + Σ φ_i Y_{t-i+1}
+    # and produce a concrete VND figure instead of saying "I don't have β".
+    try:
+        ar_intercept = float(r1.get('c', r1.get('intercept', 0.0)))
+        _phi_raw = r1.get('coefs', r1.get('phi', []))
+        try:
+            phi_list = [float(v) for v in _phi_raw]
+        except Exception:
+            phi_list = []
+        if phi_list:
+            ctx['ar_coefs'] = {
+                'intercept': ar_intercept,
+                'phi': phi_list,
+            }
+            # Pre-formatted LaTeX equation with REAL numbers — already in
+            # "nghìn đồng" units (same as df['Close']); the bot can multiply
+            # by 1000 to get VND when needed.
+            _terms = [f'{ar_intercept:.4f}']
+            for i, v in enumerate(phi_list):
+                # Use Y_t for lag-1, Y_{t-1} for lag-2, etc.
+                if i == 0:
+                    _terms.append(f'{v:.4f} \\cdot Y_t')
+                else:
+                    _terms.append(f'{v:.4f} \\cdot Y_{{t-{i}}}')
+            ctx['ar_equation_str'] = (
+                '\\hat{Y}_{t+1} = ' + ' + '.join(_terms)
+            )
+    except Exception as _e:
+        _log(f'[Chatbot] ar_coefs skipped: {str(_e)[:120]}')
+
+    # ── MLR(p) coefficients (r2) ───────────────────────────────
+    # r2['coef'] layout: [price_lag_0..p-1, volume_lag_0..p-1, range_lag_0..p-1]
+    try:
+        mlr_intercept = float(r2.get('intercept', 0.0))
+        _coef_raw = r2.get('coef', [])
+        try:
+            coef_list = [float(v) for v in _coef_raw]
+        except Exception:
+            coef_list = []
+        _p = int(r2.get('p', ar_order or 1))
+        if coef_list and len(coef_list) >= 3 * _p:
+            price_lags  = [round(v, 6) for v in coef_list[:_p]]
+            volume_lags = [round(v, 9) for v in coef_list[_p:2 * _p]]
+            range_lags  = [round(v, 6) for v in coef_list[2 * _p:3 * _p]]
+            ctx['mlr_coefs'] = {
+                'intercept':   mlr_intercept,
+                'price_lags':  price_lags,
+                'volume_lags': volume_lags,
+                'range_lags':  range_lags,
+            }
+    except Exception as _e:
+        _log(f'[Chatbot] mlr_coefs skipped: {str(_e)[:120]}')
+
+    # ── CART(p) summary (r3) ───────────────────────────────────
+    # Top features are useful for the bot to explain "what the tree split on".
+    try:
+        _model = r3.get('model', None)
+        _imp = r3.get('importances', {}) or {}
+        if _model is not None:
+            _depth = int(getattr(_model.tree_, 'max_depth', 0)) if hasattr(_model, 'tree_') else 0
+            _n_leaves = int(_model.get_n_leaves()) if hasattr(_model, 'get_n_leaves') else 0
+        else:
+            _depth = int(r3.get('best', {}).get('max_depth', 0)) if isinstance(r3.get('best'), dict) else 0
+            _n_leaves = 0
+        # importances dict values are fractions (0..1) summed across lags → ×100 for %
+        if _imp:
+            _ranked = sorted(_imp.items(), key=lambda kv: float(kv[1]), reverse=True)
+            top3 = [(name, float(val) * 100.0) for name, val in _ranked[:3]]
+        else:
+            top3 = []
+        ctx['cart_summary'] = {
+            'depth':         _depth,
+            'n_leaves':      _n_leaves,
+            'top_features':  top3,
+        }
+    except Exception as _e:
+        _log(f'[Chatbot] cart_summary skipped: {str(_e)[:120]}')
+
     return ctx
 
 
@@ -444,25 +523,32 @@ def _is_theory_query(query: str) -> bool:
     """Câu hỏi lý thuyết thuần — KHÔNG cần context (giá, MAPE, etc).
     Trả lời có thể share cache giữa các ticker → tiết kiệm quota tối đa.
 
-    v6: Strip diacritics → 'la gi' / 'là gì' đều match.
+    v13 (2026-05-06): Negative-gate first. If query mentions concrete data
+    signals (ticker name, price, forecast, calculate, current, ...) → NOT
+    theory, even if it also contains "công thức". Drop bare "cong thuc"
+    keyword (only match "cong thuc tong quat") so "công thức của FPT" passes
+    the negative gate and the bot keeps the model coefficients in context.
     """
     q = _strip_diacritics_simple((query or '').lower())
-    theory_kws = [
-        'la gi', 'la sao', 'nghia la', 'hoat dong', 'cong thuc', 'phuong trinh',
-        'giai thich', 'dinh nghia', 'khac nhau', 'khac gi', 'so sanh',
-        'nen chon', 'khi nao', 'tai sao', 'y nghia', 'thang danh gia',
-        'what is', 'what are', 'how does', 'how do', 'explain', 'meaning',
-        'difference', 'compare', 'formula', 'equation', 'when to use',
-        'why', 'definition',
+
+    # Negative signals — câu có những từ này KHÔNG phải theory thuần
+    data_signals = [
+        'gia', 'price', 'du bao', 'forecast', 'phan tich', 'analyze', 'analysis',
+        'hien tai', 'current', 'this stock', 'cua ma', 'tinh toan', 'calculate',
+        'bao nhieu', 'how much', 'phien toi', 'next session',
+        'fpt', 'hpg', 'vnm',
     ]
-    # Exclude nếu có data-specific keywords (giá, dự báo, ticker name)
-    data_kws = ['gia', 'price', 'du bao', 'forecast', 'phan tich',
-                'analyze', 'analysis', 'hien tai', 'current',
-                'phien toi', 'next session', 'fpt', 'hpg', 'vnm',
-                'tom tat', 'review', 'tong quan']
-    has_theory = any(k in q for k in theory_kws)
-    has_data   = any(k in q for k in data_kws)
-    return has_theory and not has_data
+    if any(s in q for s in data_signals):
+        return False
+
+    theory_kws = [
+        'la gi', 'la sao', 'nghia la', 'hoat dong', 'cong thuc tong quat',
+        'giai thich', 'dinh nghia', 'khac nhau', 'khac gi', 'so sanh',
+        'khi nao', 'tai sao', 'y nghia', 'thang danh gia',
+        'what is', 'what are', 'how does', 'how do', 'explain', 'meaning',
+        'difference', 'compare', 'when to use', 'why', 'definition',
+    ]
+    return any(k in q for k in theory_kws)
 
 
 def _get_recent_history(max_turns: int = 2) -> list:
