@@ -1,4 +1,100 @@
-# Changelog — Trợ lý AI v2 upgrade
+# Changelog — Trợ lý AI
+
+## 2026-05-06 — Phase 1-5 rewrite (v12)
+
+Two missions delivered in a single session:
+
+1. **Real KaTeX math rendering** — replaced the Unicode pretty-print
+   "fake-math" pipeline with Streamlit's native `st.markdown` path so
+   `$...$` and `$$...$$` are now rendered by the bundled KaTeX. The
+   previous KaTeX-iframe attempt could not access the parent document
+   on Streamlit Cloud (origin `null`), so we instead split bot bubbles
+   into chrome (HTML via `st.markdown(unsafe_allow_html=True)`) and
+   content (plain `st.markdown(text)` — KaTeX auto-applies). Streaming
+   live bubble updated likewise (~5 fps throttled).
+2. **General-purpose ChatGPT-class assistant** — rewrote both
+   `_SYSTEM_PROMPT_VI` and `_SYSTEM_PROMPT_EN` to drop the
+   "Vietnamese-only" / "must-use-formula" / "app-only-topics" rules.
+   The bot can now answer programming, math, history, daily-life
+   questions etc. in the user's language while still using app tools
+   when the user mentions FPT/HPG/VNM/MAPE/Ichimoku.
+
+### Phase summary
+
+- **Phase 1** — Deleted `_NB`, `_GREEK_MAP`, `_OP_MAP`, `_SUB_O/_C`,
+  `_SUP_O/_C`, `_latex_to_pretty`, `_restore_subsup`, `_CODE_KEYWORDS`,
+  `_STRONG_MATH_MARKERS`, `_DOMAIN_MATH_TOKENS`, `_looks_like_math`,
+  `_DOMAIN_FORMULA_NAMES`, `_line_looks_like_math`,
+  `_looks_like_identifier`, `_strip_emphasis_wrap`, `_math_display_html`,
+  `_math_inline_html`. Rewrote `_md_to_html` to preserve `$...$`/`$$...$$`
+  literally. Rewrote `_render_bot_message` to use `st.markdown(content)`
+  for the body. Streaming bubble switched to plain markdown chunks.
+  `_inject_katex_once` repurposed as a Prism.js injector (Phase 5).
+
+- **Phase 2** — Replaced both system prompts with a friendly
+  general-purpose persona. Removed the "LUÔN trả lời tiếng Việt" /
+  "BẮT BUỘC kèm công thức" / "ALWAYS respond in English" mandates.
+  LaTeX instruction reduced to a single line: *"Use $...$ for inline
+  math and $$...$$ for display math (LaTeX standard)."* Bumped
+  `PROMPT_VERSION` → `v12-2026-05-06-general-purpose` to invalidate
+  the old fuzzy cache.
+
+- **Phase 3** — Simplified `_ai_answer_with_retry` to two attempts:
+  Gemini full → Groq 70B → polite error. Removed self-review pattern
+  (`_ai_answer_with_review` is now an alias), the slim Gemini retry,
+  Groq 8B fallback, Gemma2 fallback, and the countdown UI
+  (`_countdown_and_retry` is now an alias). `ENABLE_SELF_REVIEW` is
+  `False`. `_MODEL_CANDIDATES` in `chatbot_groq.py` trimmed to just
+  `['llama-3.3-70b-versatile']`.
+
+- **Phase 4** — `chatbot_cache` now only fires for *pure-theory*
+  queries: must contain a marker like *"là gì" / "what is"* AND a
+  theory token like *AR / MAPE / Ichimoku*, must NOT contain a
+  ticker name (FPT/HPG/VNM), must NOT contain data-dependent words.
+  Cache key is exact normalized query + lang (no fuzzy MD5
+  cross-ticker layer).
+
+- **Phase 5** — Prism.js (`prismjs@1.29.0` + autoloader) is injected
+  once per session via `_inject_katex_once`, with a MutationObserver
+  on `parent.document.body` so streaming/late-arriving fenced code
+  blocks get highlighted. The Streamlit-native markdown path already
+  highlights ` ```python ` / ` ```javascript ` etc.
+
+### Files modified
+
+- `app_pages/chatbot.py` — major: math pipeline pivot, render path,
+  Prism.js injection, deleted ~380 lines of fake-math helpers
+- `core/chatbot_ai.py` — system prompts replaced, PROMPT_VERSION bumped
+- `core/chatbot_logic.py` — retry chain simplified, self-review removed
+- `core/chatbot_groq.py` — model list trimmed
+- `core/chatbot_cache.py` — strict pure-theory gating, no fuzzy fallback
+- `_test_chatbot_render.py` — replaced harness (25 assertions)
+- `PLAN.md` — overwritten with the new plan
+
+### Key architectural decisions
+
+1. **Path A over Path B for KaTeX.** The previous attempt used an
+   iframe-injected `renderMathInElement(parent.document.body, ...)`
+   call, which fails silently on Streamlit Cloud because the
+   srcdoc-based iframe has origin `null` and cannot reach the parent
+   document. Streamlit's bundled KaTeX runs in the parent document
+   already — we just need to feed it markdown via `st.markdown(text)`
+   without `unsafe_allow_html`. The bubble visual is preserved by
+   wrapping each st.markdown call in pre/post HTML chrome `<div>`s.
+2. **Backwards-compat shims for retry helpers.** Rather than ripping
+   out the names that `app_pages/chatbot.py` imports, we kept
+   `_ai_answer_with_review`, `_try_groq`, and `_countdown_and_retry`
+   as thin aliases / wrappers so the import chain stays valid. Real
+   logic is now exclusively in `_ai_answer_with_retry`.
+3. **Cache scope cut by ~95%.** Most chatbot answers are now uncached.
+   This is acceptable because (a) Gemini's free tier handles the
+   load; (b) live data freshness was the user's stated concern; and
+   (c) theory questions still hit-rate well because their normalized
+   form is stable across users.
+
+---
+
+## 2026-05-04 — Trợ lý AI v2 upgrade (legacy)
 
 Date: 2026-05-06
 Branch: main
