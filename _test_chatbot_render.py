@@ -6,7 +6,7 @@ Checks:
   - _md_to_html preserves $...$ and $$...$$ literally (no fake-math).
   - Old fake-math helpers (_latex_to_pretty / _math_display_html /
     _math_inline_html) are gone.
-  - 7 chatbot tools registered, no `plot_price_chart`.
+  - 9 chatbot tools registered (incl. v18 date tools), no `plot_price_chart`.
   - System prompts dropped the "LUÔN trả lời tiếng Việt" / "BẮT BUỘC ...
     KaTeX" rules — replaced with the friendlier general-purpose prompt.
   - Retry chain has no _build_critique_prompt / _build_refine_prompt /
@@ -204,12 +204,14 @@ def _():
     assert 'language-python' in out, f'Prism class missing: {out!r}'
 
 
-@test('18: chatbot_tools registers exactly 7 tools, no plot_price_chart')
+@test('18: chatbot_tools registers exactly 9 tools (v18: + date tools)')
 def _():
     from core import chatbot_tools as ct
     names = [getattr(fn, '__name__', '?') for fn in ct.AVAILABLE_TOOLS]
-    assert len(names) == 7, f'Expected 7 tools, got {len(names)}: {names}'
+    assert len(names) == 9, f'Expected 9 tools, got {len(names)}: {names}'
     assert 'plot_price_chart' not in names, 'plot_price_chart should be deleted'
+    assert 'get_price_on_date' in names, 'v18 get_price_on_date missing'
+    assert 'get_price_range' in names, 'v18 get_price_range missing'
 
 
 @test('19: system prompts dropped old language-only mandates + kept general-purpose')
@@ -305,14 +307,14 @@ def _():
     assert 'φ_1 = 0.9800' in out, f'phi_1 missing: {out!r}'
 
 
-@test('30: PROMPT_VERSION ≥ v13 (current: tool-mandatory)')
+@test('30: PROMPT_VERSION ≥ v18 (current: historical-data)')
 def _():
     from core.chatbot_ai import PROMPT_VERSION
     # Extract numeric major version from leading "vNN-..."
     head = PROMPT_VERSION.split('-')[0]
     assert head.startswith('v'), f'unexpected format: {PROMPT_VERSION}'
     major = int(head[1:])
-    assert major >= 13, f'Expected v13+, got {PROMPT_VERSION}'
+    assert major >= 18, f'Expected v18+, got {PROMPT_VERSION}'
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -374,6 +376,70 @@ def _():
     assert 'answer ONLY about that model' in _SYSTEM_PROMPT_EN, (
         'EN model-anti-drift rule missing'
     )
+
+
+@test('E (v18): _query_needs_data picks up date references')
+def _():
+    from core.chatbot_stream import _query_needs_data
+    # Date-shaped queries → True
+    assert _query_needs_data('giá FPT ngày 20/3/2024') is True
+    assert _query_needs_data('FPT 20-03-2024 đóng cửa bao nhiêu') is True
+    assert _query_needs_data('giá HPG tháng 3 2024') is True
+    assert _query_needs_data('Q1 2024 giá VNM') is True
+    assert _query_needs_data('cao nhất tuần qua') is True
+    assert _query_needs_data('highest in march') is True
+    # Theory remains False
+    assert _query_needs_data('AR là gì?') is False
+    assert _query_needs_data('what is MAPE') is False
+
+
+@test('F (v18): rules add project_info / chatbot_self / vague_clarify intents')
+def _():
+    from core.chatbot_rules import match_intent, _ANSWERS_VI, _ANSWERS_EN
+    for k in ('project_info', 'chatbot_self', 'vague_clarify'):
+        assert k in _ANSWERS_VI, f'VI missing intent {k}'
+        assert k in _ANSWERS_EN, f'EN missing intent {k}'
+    # Project info
+    assert match_intent('đề tài này là gì?') == 'project_info'
+    assert match_intent('GVHD là ai?') == 'project_info'
+    assert match_intent('trường nào?') == 'project_info'
+    # Chatbot self
+    assert match_intent('bạn là ai?') == 'chatbot_self'
+    assert match_intent('giới thiệu về bạn') == 'chatbot_self'
+    # Vague
+    assert match_intent('giúp tôi') == 'vague_clarify'
+
+
+@test('G (v18): system prompt mentions project name + new date tools')
+def _():
+    from core.chatbot_ai import _SYSTEM_PROMPT_VI, _SYSTEM_PROMPT_EN
+    # VI prompt
+    assert 'Chế Ngọc Hà' in _SYSTEM_PROMPT_VI, 'VI prompt missing supervisor name'
+    assert 'C2300014' in _SYSTEM_PROMPT_VI, 'VI prompt missing student ID'
+    assert 'get_price_on_date' in _SYSTEM_PROMPT_VI, 'VI prompt missing get_price_on_date tool'
+    assert 'get_price_range' in _SYSTEM_PROMPT_VI, 'VI prompt missing get_price_range tool'
+    # EN prompt
+    assert 'Che Ngoc Ha' in _SYSTEM_PROMPT_EN, 'EN prompt missing supervisor name'
+    assert 'get_price_on_date' in _SYSTEM_PROMPT_EN, 'EN prompt missing get_price_on_date tool'
+    assert 'get_price_range' in _SYSTEM_PROMPT_EN, 'EN prompt missing get_price_range tool'
+
+
+@test('H (v18): chatbot.py uses _RENDER_INTERVAL = 0.13 (130ms throttle)')
+def _():
+    here = os.path.dirname(os.path.abspath(__file__))
+    src = open(os.path.join(here, 'app_pages', 'chatbot.py'),
+               encoding='utf-8').read()
+    assert '_RENDER_INTERVAL' in src, 'v18 throttle constant missing'
+    assert '0.13' in src, 'v18 throttle interval (0.13s) missing'
+
+
+@test('I (v18): _to_history_contents trims to 4 messages × 600 chars')
+def _():
+    here = os.path.dirname(os.path.abspath(__file__))
+    src = open(os.path.join(here, 'core', 'chatbot_stream.py'),
+               encoding='utf-8').read()
+    assert 'history[-4:]' in src, 'v18 history trim (4 messages) missing'
+    assert 'len(text) > 600' in src, 'v18 char cap (600) missing'
 
 
 @test('33: _ai_answer_with_retry calls _rule_fallback when both AI fail')

@@ -35,18 +35,18 @@ background-size: 48px 48px;
 mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
 -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
 }
-.splash-wrap { position: relative; z-index: 10; max-width: 820px; margin: 0 auto; padding: 24px 24px 16px; text-align: center; animation: splash-fade-in 0.8s ease-out; }
+.splash-wrap { position: relative; z-index: 10; max-width: 880px; margin: 0 auto; padding: 24px 32px 16px; text-align: center; animation: splash-fade-in 0.8s ease-out; }
 @keyframes splash-fade-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
-.splash-logos { display: flex; justify-content: space-between; align-items: center; gap: 28px; margin-bottom: 24px; flex-wrap: wrap; }
-.splash-logos img { height: 96px; width: auto; filter: drop-shadow(0 6px 16px rgba(30,64,175,0.15)); }
-.splash-univ { text-align: center; flex: 1; min-width: 240px; }
+.splash-logos { display: flex; justify-content: center; align-items: center; gap: 56px; margin-bottom: 24px; flex-wrap: wrap; }
+.splash-logos img { height: 92px; width: auto; filter: drop-shadow(0 6px 16px rgba(30,64,175,0.15)); }
+.splash-univ { text-align: center; flex: 0 1 320px; min-width: 240px; }
 .splash-univ .name { display: block; font-weight: 800; color: #1E40AF !important; font-size: 17px; line-height: 1.4; letter-spacing: 0.6px; }
 .splash-univ .faculty { display: inline-block; margin-top: 8px; padding: 6px 18px; font-size: 12px; font-weight: 700; color: #1E40AF !important; letter-spacing: 2px; background: rgba(59,130,246,0.10); border: 1px solid rgba(59,130,246,0.30); border-radius: 999px; }
 .splash-badge { display: inline-block; margin: 18px 0 14px; padding: 7px 20px; font-size: 11px; font-weight: 700; color: #475569 !important; letter-spacing: 2.2px; text-transform: uppercase; background: rgba(241,245,249,0.7); border-top: 1px solid rgba(148,163,184,0.30); border-bottom: 1px solid rgba(148,163,184,0.30); }
 .splash-title { font-family: 'Cambria','Times New Roman', Georgia, serif; font-weight: 700; color: #0F172A !important; font-size: 30px; line-height: 1.35; margin: 14px 0 6px; letter-spacing: 0.4px; }
 .splash-title-accent { color: #1E40AF !important; font-style: italic; }
 .splash-sep { display: block; width: 80px; height: 3px; margin: 18px auto 24px; background: linear-gradient(90deg, transparent, #1E40AF, transparent); border-radius: 2px; }
-.splash-card { background: #FFFFFF !important; border: 1px solid rgba(148,163,184,0.25); border-left: 4px solid #1E40AF; border-radius: 12px; padding: 20px 28px; margin: 14px auto; max-width: 560px; box-shadow: 0 4px 14px rgba(15,23,42,0.06), 0 1px 3px rgba(15,23,42,0.04); text-align: left; position: relative; z-index: 5; }
+.splash-card { background: #FFFFFF !important; border: 1px solid rgba(148,163,184,0.25); border-left: 4px solid #1E40AF; border-radius: 12px; padding: 20px 28px; margin: 14px auto; max-width: 600px; box-shadow: 0 4px 14px rgba(15,23,42,0.06), 0 1px 3px rgba(15,23,42,0.04); text-align: left; position: relative; z-index: 5; }
 .splash-card .label { display: block; font-size: 10.5px; font-weight: 800; color: #1E40AF !important; text-transform: uppercase; letter-spacing: 2.2px; margin-bottom: 10px; }
 .splash-card .value { font-size: 15px; color: #0F172A !important; font-weight: 600; line-height: 1.85; }
 .splash-card .value .author-id { color: #64748B !important; font-weight: 500; font-size: 13.5px; margin-left: 6px; }

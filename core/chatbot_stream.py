@@ -81,20 +81,20 @@ def _to_history_contents(history: List[Dict[str, str]], lang: str):
     """Convert {'role':'user'|'assistant','content':...} → list of types.Content.
 
     The google-genai SDK expects role='user' or 'model'. We trim per-message
-    content to 800 chars and cap the total to last 6 messages — perf tuning
-    2026-05-06: smaller payload → faster TTFB on Gemini streaming.
+    content to 600 chars and cap the total to last 4 messages — perf tuning
+    v18 (2026-05-06): smaller payload → faster TTFB on Gemini streaming.
     """
     from google.genai import types
     history = history or []
-    history = history[-6:]
+    history = history[-4:]
     out = []
     for h in history:
         role = h.get('role', 'user')
         text = (h.get('content') or '').strip()
         if not text:
             continue
-        if len(text) > 800:
-            text = text[:800] + '…'
+        if len(text) > 600:
+            text = text[:600] + '…'
         sdk_role = 'model' if role == 'assistant' else 'user'
         try:
             part = types.Part.from_text(text=text)
@@ -150,9 +150,15 @@ def _query_needs_data(query: str) -> bool:
     instead of hallucinating "I don't have access to that data".
     Theory questions ("AR là gì?", "MAPE là gì?") return False — answered
     from training knowledge with KaTeX, no tool needed.
+
+    v18 additions: detect explicit date references (DD/MM, "ngày X",
+    "tháng N", "Q1 2024", "tuần qua", "highest in March") so the model
+    is forced to call get_price_on_date / get_price_range instead of
+    making up historical numbers.
     """
     if not query:
         return False
+    import re
     import unicodedata
     s = unicodedata.normalize('NFKD', query.lower())
     s = ''.join(c for c in s if not unicodedata.combining(c))
@@ -166,6 +172,34 @@ def _query_needs_data(query: str) -> bool:
     )
     if any(m in s for m in theory_markers):
         return False
+
+    # Date-shaped patterns → must consult historical data
+    date_patterns = (
+        r'\b\d{1,2}[/\-.]\d{1,2}([/\-.]\d{2,4})?\b',     # 20/3, 20-3-2024
+        r'\bngay\s+\d{1,2}\b',                             # ngày 20
+        r'\bthang\s+\d{1,2}\b',                            # tháng 3
+        r'\bq[1-4]\s*\d{2,4}\b',                           # Q1 2024
+        r'\bquy\s+[1-4]\b',                                # quý 1
+        r'\bnam\s+\d{4}\b',                                # năm 2024
+    )
+    if any(re.search(p, s) for p in date_patterns):
+        return True
+
+    history_keywords = (
+        'tuan qua', 'tuan truoc', 'last week',
+        'thang qua', 'thang truoc', 'last month',
+        'ngay qua', 'hom qua', 'yesterday',
+        'cao nhat', 'thap nhat', 'highest', 'lowest',
+        'trong khoang', 'tu ngay', 'den ngay',
+        'between', 'from', 'to', 'period',
+        'thang gieng', 'thang hai', 'thang ba', 'thang tu',
+        'thang nam', 'thang sau', 'thang bay', 'thang tam',
+        'thang chin', 'thang muoi', 'thang muoi mot', 'thang muoi hai',
+        'january', 'february', 'march', 'april', 'may ', 'june',
+        'july', 'august', 'september', 'october', 'november', 'december',
+    )
+    if any(k in s for k in history_keywords):
+        return True
 
     data_signals = (
         'phan tich', 'analyze', 'analysis',

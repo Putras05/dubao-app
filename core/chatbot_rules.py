@@ -262,6 +262,40 @@ HPG thường có **MAPE cao hơn** FPT/VNM do tính chu kỳ.""",
 - **Phù hợp**: AR(1-2), biến động ngắn hạn thấp
 
 VNM có **volatility thấp nhất** trong 3 ticker.""",
+
+    'project_info': """### Về đề tài
+
+- **Tên đề tài**: *XÂY DỰNG CHATBOT PHÂN TÍCH VÀ DỰ BÁO CHỨNG KHOÁN DỰA TRÊN MÔ HÌNH THỐNG KÊ VÀ HỌC MÁY*
+- **Đơn vị**: Trường Đại học Tôn Đức Thắng (TDTU) — Khoa Toán – Thống kê
+- **Niên khoá**: 2025 – 2026
+- **GVHD**: ThS. Chế Ngọc Hà
+- **Nhóm tác giả**:
+  - Nguyễn Thành Danh — C2300014
+  - Nguyễn Nhật Anh Huy — C2200153
+  - Mai Phan Vũ — C2200141
+- **Phạm vi**: 3 mã HOSE (FPT, HPG, VNM) · mô hình AR(p), MLR(p), CART(p) · chỉ báo Ichimoku
+- **Mục tiêu**: dự báo giá phiên kế tiếp + phân tích kỹ thuật, tích hợp chatbot AI hỗ trợ giải thích.""",
+
+    'chatbot_self': """### Mình là ai?
+
+Mình là **trợ lý AI** được tích hợp vào app NCKH dự báo chứng khoán của TDTU 2026.
+
+- Backbone: Google Gemini (chính) → Groq LLaMA-3.3-70B (dự phòng) → rule-based (an toàn).
+- Mình có **9 công cụ** truy cập dữ liệu thật trong app (giá, chỉ số đánh giá, Ichimoku, lịch sử, dữ liệu theo ngày, danh mục…) để trả lời chính xác thay vì bịa.
+- Mình hiểu cả tiếng Việt lẫn tiếng Anh, hỗ trợ công thức LaTeX và highlight code.
+- Vai trò: giải thích lý thuyết AR/MLR/CART/Ichimoku, đọc số liệu app, trả lời chuyện đời thường.
+
+Ngoài chuyện app, bạn cứ hỏi mình bất kỳ chủ đề nào — mình trả lời như chat bình thường.""",
+
+    'vague_clarify': """Câu hỏi hơi rộng, bạn muốn mình tập trung vào đâu nhỉ?
+
+Một vài hướng phổ biến:
+- **Lý thuyết**: AR(p), MLR(p), CART(p), Ichimoku, MAPE/RMSE/MAE/R²adj
+- **Số liệu app**: giá hiện tại / dự báo / đánh giá mô hình của FPT, HPG, VNM
+- **Lịch sử**: giá ngày cụ thể (vd "giá FPT ngày 20/3/2024"), khoảng ngày, tháng, quý
+- **Đề tài**: thông tin đề tài, nhóm tác giả, GVHD
+
+Bạn nói rõ hơn 1 chút giúp mình nhé — ví dụ: *"giải thích MAPE"*, *"dự báo FPT phiên tới bằng MLR"*, hay *"giá HPG tháng 3/2024"*.""",
 }
 
 
@@ -284,6 +318,12 @@ _ANSWERS_EN = {
     'fpt_info':         "### FPT — FPT Corporation\n\nHOSE. IT/Telecom/Education. Steady growth, moderate volatility. Suited for AR(1-3). Typically lowest MAPE among 3 tickers.",
     'hpg_info':         "### HPG — Hoa Phat Group\n\nHOSE. Steel/Construction. Cyclical, high volatility, sensitive to steel prices. Suited for MLR, CART. Higher MAPE typical.",
     'vnm_info':         "### VNM — Vinamilk\n\nHOSE. Dairy/FMCG. Defensive stock, lowest volatility. Suited for AR(1-2). Long-term downtrend recently.",
+
+    'project_info':     "### About this project\n\n- **Title**: *Building a Chatbot for Stock Analysis and Forecasting Based on Statistical and Machine Learning Models*\n- **Affiliation**: Ton Duc Thang University (TDTU) — Faculty of Mathematics & Statistics\n- **Year**: 2025–2026\n- **Supervisor**: MSc. Che Ngoc Ha\n- **Authors**: Nguyen Thanh Danh (C2300014), Nguyen Nhat Anh Huy (C2200153), Mai Phan Vu (C2200141)\n- **Scope**: 3 HOSE tickers (FPT, HPG, VNM); AR(p), MLR(p), CART(p) models; Ichimoku.",
+
+    'chatbot_self':     "### Who am I?\n\nI'm an **AI assistant** embedded in the TDTU 2026 stock-forecasting research app.\n\n- Backbone: Google Gemini (primary) → Groq LLaMA-3.3-70B (fallback) → rule-based (safety net).\n- I have **9 tools** to read live app data (prices, metrics, Ichimoku, history, date lookups, portfolio…) so I quote real numbers instead of guessing.\n- I speak Vietnamese and English, render LaTeX, and highlight code.\n- Role: explain AR/MLR/CART/Ichimoku theory, read app numbers, chat naturally.\n\nFeel free to ask anything beyond the app too.",
+
+    'vague_clarify':    "Your question is a bit broad — what would you like to focus on?\n\nCommon directions:\n- **Theory**: AR(p), MLR(p), CART(p), Ichimoku, MAPE/RMSE/MAE/R²adj\n- **App data**: current price / forecast / model metrics for FPT, HPG, VNM\n- **History**: price on a specific day (e.g. \"FPT price on 20/3/2024\"), date range, month, quarter\n- **Project**: info about the thesis, authors, supervisor\n\nGive me a more specific cue, e.g. *\"explain MAPE\"*, *\"forecast FPT next session with MLR\"*, or *\"HPG price in March 2024\"*.",
 }
 
 
@@ -385,6 +425,27 @@ _PATTERNS = [
     # NOTE: "phân tích FPT/HPG/VNM" KHÔNG còn match rule cứng — để AI dùng
     # context (giá thật, MAPE, dự báo) đưa ra phân tích động thay vì
     # company-info tĩnh. User muốn xem company info → "FPT là gì" / "FPT info".
+
+    # ── Project / thesis info ──────────────────────────────────
+    (r'(đề tài|đồ án|luận văn|nckh|dự án|project|thesis)\s*(này|là gì|là sao|về|gì|info|about|what)?', 'project_info'),
+    (r'(ai|nhóm|tác giả|sinh viên|who)\s*(làm|thực hiện|là người|wrote|built|did)\s*(đề tài|app|này|nckh|project|this)?', 'project_info'),
+    (r'(gvhd|giảng viên|hướng dẫn|supervisor|advisor|teacher)', 'project_info'),
+    (r'(trường|đại học|university|tdt|tdtu|tôn đức thắng|ton duc thang)', 'project_info'),
+    (r'(khoa|faculty|toán\s*[-–]?\s*thống kê|math.*stat)', 'project_info'),
+
+    # ── Chatbot self / meta ─────────────────────────────────────
+    (r'(bạn|mày|cậu|you)\s+(là ai|là gì|tên gì|who are you|là ai vậy|what are you)', 'chatbot_self'),
+    (r'(giới thiệu|introduce|tell me)\s*(về\s*)?(bạn|chatbot|trợ lý|yourself|assistant)', 'chatbot_self'),
+    (r'(chatbot|trợ lý ai|assistant)\s+(là gì|hoạt động|làm gì|how|what)', 'chatbot_self'),
+    (r'(model|mô hình)\s+(nào|gì|which)\s+(đứng sau|behind|chạy|run|dùng|powering|powers)', 'chatbot_self'),
+    (r'(mày|bạn|cậu|you)\s+(dùng|use|running|chạy)\s+(gemini|llama|groq|gpt|claude)', 'chatbot_self'),
+
+    # ── Vague / clarify (đặt cuối cùng, fallback rộng) ─────────
+    # Chỉ match khi câu rất ngắn và không có từ khoá cụ thể nào ở trên.
+    (r'^\s*(hi|hello|chào|xin chào|hey|alo)\s*[!.?]?\s*$', 'chatbot_self'),
+    (r'^\s*(giúp|help|trợ giúp)\s*(tôi|me|với|please)?\s*[!.?]?\s*$', 'vague_clarify'),
+    (r'^\s*(tư vấn|advise|advice|gợi ý|suggest)\s*[!.?]?\s*$', 'vague_clarify'),
+    (r'^\s*(làm gì|what to do|cần gì|need)\s*[!.?]?\s*$', 'vague_clarify'),
 ]
 
 

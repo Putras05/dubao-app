@@ -45,15 +45,19 @@ def ask_groq(user_query: str, context: dict = None, lang: str = 'VI',
     if slim_system:
         if lang == 'EN':
             system_prompt = (
-                "You are a friendly AI assistant for a Vietnamese stock forecasting "
-                "research app (TDTU NCKH 2026). The app uses real HOSE data for "
+                "You are a friendly AI assistant for the TDTU 2026 research project "
+                "'Building a Chatbot for Stock Analysis and Forecasting Based on "
+                "Statistical and Machine Learning Models' (Faculty of Math & Stats, "
+                "supervisor MSc. Che Ngoc Ha). The app uses real HOSE data for "
                 "FPT, HPG, VNM with AR(p)/MLR(p)/CART(p) models. "
                 "Reply naturally and conversationally. Never stay silent."
             )
         else:
             system_prompt = (
-                "Bạn là trợ lý AI thân thiện của app NCKH dự báo giá cổ phiếu HOSE "
-                "(TDTU 2026). App dùng dữ liệu thật cho FPT, HPG, VNM với 3 mô hình "
+                "Bạn là trợ lý AI thân thiện của đề tài NCKH TDTU 2026 "
+                "'Xây dựng chatbot phân tích và dự báo chứng khoán dựa trên mô hình "
+                "thống kê và học máy' (Khoa Toán-Thống kê, GVHD: ThS. Chế Ngọc Hà). "
+                "App dùng dữ liệu thật cho FPT, HPG, VNM với 3 mô hình "
                 "AR(p)/MLR(p)/CART(p). Hãy trả lời tự nhiên như trò chuyện. "
                 "Không được im lặng."
             )

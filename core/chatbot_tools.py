@@ -264,6 +264,134 @@ def get_price_history(days: int = 30) -> dict:
     return {'ticker': s.get('ticker', ''), 'n': len(rows), 'rows': rows}
 
 
+def get_price_on_date(date: str) -> dict:
+    """Get the OHLCV price of the active ticker on a specific calendar date.
+    If the date is not a trading day, returns the closest trading day within
+    ±5 days (e.g. weekend → previous Friday). Use when the user asks "giá
+    ngày DD/MM/YYYY", "phiên ngày X", "đóng cửa hôm 20/3/2024", etc.
+
+    Args:
+        date: any human date string. Accepted: "20/3/2024", "20-03-2024",
+              "2024-03-20", "20.3.2024". Day-first is assumed for ambiguous
+              cases like "3/4" (=3 April, not 4 March).
+
+    Returns:
+        dict with: ticker, requested_date, matched_date, offset_days,
+        open_vnd, high_vnd, low_vnd, close_vnd, volume, return_pct.
+        On failure: {'error': '...'}.
+    """
+    s = _state()
+    if not s:
+        return {'error': 'app_state_not_initialized'}
+    df = s.get('df')
+    if df is None or not len(df):
+        return {'error': 'no_data'}
+    try:
+        import pandas as pd
+        target = pd.to_datetime(date, dayfirst=True, errors='coerce')
+        if pd.isna(target):
+            return {'error': f'unparseable_date: {date}'}
+        dts = pd.to_datetime(df['Ngay'], errors='coerce')
+        diffs = (dts - target).dt.days
+        # Closest within ±5 days, prefer same/earlier
+        mask = diffs.abs() <= 5
+        if not mask.any():
+            return {'error': f'no_session_within_5d_of: {date}'}
+        idx = diffs[mask].abs().idxmin()
+        row = df.loc[idx]
+        offset = int(diffs.loc[idx])
+        return {
+            'ticker': s.get('ticker', ''),
+            'requested_date': _safe_str(target.date()),
+            'matched_date': _safe_str(row.get('Ngay', ''))[:10],
+            'offset_days': offset,
+            'open_vnd':  _safe_float(row.get('Open', 0)) * 1000,
+            'high_vnd':  _safe_float(row.get('High', 0)) * 1000,
+            'low_vnd':   _safe_float(row.get('Low', 0)) * 1000,
+            'close_vnd': _safe_float(row.get('Close', 0)) * 1000,
+            'volume':    int(_safe_float(row.get('Volume', 0))),
+            'return_pct': _safe_float(row.get('Return', 0)),
+        }
+    except Exception as e:
+        return {'error': f'date_lookup_failed: {str(e)[:120]}'}
+
+
+def get_price_range(start_date: str, end_date: str, summary: bool = True) -> dict:
+    """Get price statistics or full OHLCV rows for a date range. Use when
+    the user asks "giá tuần trước", "tháng 3/2024", "Q1 2024", "từ ngày X
+    đến ngày Y", "giá cao nhất trong tháng qua".
+
+    Args:
+        start_date: range start (any human format, day-first)
+        end_date:   range end (any human format, day-first)
+        summary: True (default) → return aggregate stats only;
+                 False → return all rows (capped at 60).
+
+    Returns:
+        If summary=True: dict with n_sessions, first_date, last_date,
+        open_first_vnd, close_last_vnd, high_max_vnd, low_min_vnd,
+        avg_close_vnd, total_volume, return_period_pct, max_close_date,
+        min_close_date.
+        If summary=False: dict with n + rows[] (same shape as get_price_history).
+    """
+    s = _state()
+    if not s:
+        return {'error': 'app_state_not_initialized'}
+    df = s.get('df')
+    if df is None or not len(df):
+        return {'error': 'no_data'}
+    try:
+        import pandas as pd
+        d0 = pd.to_datetime(start_date, dayfirst=True, errors='coerce')
+        d1 = pd.to_datetime(end_date, dayfirst=True, errors='coerce')
+        if pd.isna(d0) or pd.isna(d1):
+            return {'error': f'unparseable_range: {start_date} -> {end_date}'}
+        if d0 > d1:
+            d0, d1 = d1, d0
+        dts = pd.to_datetime(df['Ngay'], errors='coerce')
+        mask = (dts >= d0) & (dts <= d1)
+        sub = df.loc[mask]
+        if not len(sub):
+            return {'error': f'no_sessions_in_range: {start_date} -> {end_date}'}
+        if not summary:
+            sub2 = sub.tail(60)
+            rows = []
+            for _, r in sub2.iterrows():
+                rows.append({
+                    'date': _safe_str(r.get('Ngay', ''))[:10],
+                    'open_vnd':  _safe_float(r.get('Open', 0)) * 1000,
+                    'high_vnd':  _safe_float(r.get('High', 0)) * 1000,
+                    'low_vnd':   _safe_float(r.get('Low', 0)) * 1000,
+                    'close_vnd': _safe_float(r.get('Close', 0)) * 1000,
+                    'volume':    int(_safe_float(r.get('Volume', 0))),
+                })
+            return {'ticker': s.get('ticker', ''), 'n': len(rows),
+                    'truncated': len(sub) > 60, 'rows': rows}
+        # Summary mode
+        first = sub.iloc[0]; last = sub.iloc[-1]
+        idx_max = sub['Close'].idxmax(); idx_min = sub['Close'].idxmin()
+        open_first = _safe_float(first.get('Open', 0)) * 1000
+        close_last = _safe_float(last.get('Close', 0)) * 1000
+        ret = ((close_last / open_first) - 1.0) * 100 if open_first else 0.0
+        return {
+            'ticker': s.get('ticker', ''),
+            'n_sessions': int(len(sub)),
+            'first_date': _safe_str(first.get('Ngay', ''))[:10],
+            'last_date':  _safe_str(last.get('Ngay', ''))[:10],
+            'open_first_vnd': open_first,
+            'close_last_vnd': close_last,
+            'high_max_vnd':  _safe_float(sub['High'].max()) * 1000,
+            'low_min_vnd':   _safe_float(sub['Low'].min()) * 1000,
+            'avg_close_vnd': _safe_float(sub['Close'].mean()) * 1000,
+            'total_volume':  int(_safe_float(sub['Volume'].sum())),
+            'return_period_pct': round(ret, 3),
+            'max_close_date': _safe_str(df.loc[idx_max, 'Ngay'])[:10],
+            'min_close_date': _safe_str(df.loc[idx_min, 'Ngay'])[:10],
+        }
+    except Exception as e:
+        return {'error': f'range_lookup_failed: {str(e)[:120]}'}
+
+
 def get_portfolio() -> dict:
     """Get the user's current investment portfolio (holdings, weights, P&L).
     The portfolio page in this app is read-only/demo at the moment, so this
@@ -381,6 +509,8 @@ AVAILABLE_TOOLS = [
     get_forecast_results,
     get_technical_signals,
     get_price_history,
+    get_price_on_date,
+    get_price_range,
     get_portfolio,
     compute_metric,
     switch_ticker,

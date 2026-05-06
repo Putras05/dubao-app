@@ -2267,15 +2267,16 @@ html body [data-testid="stSidebar"] [data-testid="stTextInput"] input::-webkit-i
                 buffered = ''
                 error_event = None
                 _last_render_ts = 0.0
+                _RENDER_INTERVAL = 0.13  # v18: ~7 fps, lower CPU on Streamlit Cloud
                 for ev in stream_answer(_query, _hist_for_stream,
                                          _runtime_ctx, _lang):
                     et = ev.get('type')
                     if et == 'text':
                         buffered += ev.get('delta', '')
-                        # Throttle to ~12 fps (80ms) — feels real-time but
+                        # Throttle to ~7 fps (130ms) — feels real-time but
                         # spares the renderer from per-token markdown reflows.
                         _now = time.time()
-                        if _now - _last_render_ts < 0.08:
+                        if _now - _last_render_ts < _RENDER_INTERVAL:
                             continue
                         _last_render_ts = _now
                         try:
