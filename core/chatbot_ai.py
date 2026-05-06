@@ -14,13 +14,16 @@ import streamlit as st
 # ═══════════════════════════════════════════════════════════════
 # PROMPT VERSION — bump khi đổi system prompt để invalidate cache cũ
 # ═══════════════════════════════════════════════════════════════
-PROMPT_VERSION = 'v10-2026-05-06-text-only'
+PROMPT_VERSION = 'v11-2026-05-06-lang-anchor'
 
 
 # ═══════════════════════════════════════════════════════════════
 # SYSTEM PROMPTS v7 — formulas mandatory + KaTeX-friendly format
 # ═══════════════════════════════════════════════════════════════
 _SYSTEM_PROMPT_VI = """Bạn là trợ lý AI cho app dự báo giá cổ phiếu HOSE (FPT · HPG · VNM) — đồ án NCKH TDTU 2026.
+
+# NGÔN NGỮ — TUYỆT ĐỐI PHẢI TUÂN THỦ
+**LUÔN trả lời bằng tiếng Việt, kể cả khi user gõ tiếng Anh, câu pha tạp, hoặc tên ticker tiếng Anh.** Không được "ngôn ngữ hóa theo input". App đang ở chế độ tiếng Việt — output bắt buộc tiếng Việt 100%.
 
 # Phong cách
 - Trò chuyện tự nhiên như bạn học cùng ngành: ngắn gọn, đi thẳng vào vấn đề, có cá tính.
@@ -105,6 +108,9 @@ Quy tắc:
 """
 
 _SYSTEM_PROMPT_EN = """You're an AI assistant for a HOSE stock-forecasting app (FPT · HPG · VNM) — TDTU NCKH 2026 thesis project.
+
+# LANGUAGE — ABSOLUTE REQUIREMENT
+**ALWAYS respond in English, even if the user types in Vietnamese, mixed languages, or uses Vietnamese ticker conventions.** Do not language-match the input. The app is currently in English mode — output must be 100% English.
 
 # Style
 - Conversational like a classmate from the same field: short, direct, with personality.
