@@ -515,176 +515,50 @@ def _format_history_prefix(history: list, lang: str) -> str:
 
 
 # ═══════════════════════════════════════════════════════════════
-# SELF-REVIEW (Reflexion pattern) — bot tự critique + refine answer
-# Trigger gated: chỉ chạy cho câu data + high-stakes (buy/sell/forecast/compare)
+# Phase-3 simplification (2026-05-06):
+#   - Self-review pattern (_ai_answer_with_review / _build_critique_prompt /
+#     _build_refine_prompt / _should_self_review) → REMOVED.
+#   - Slim Gemini retry, Groq 8B retry, countdown retry → REMOVED.
+#   - Retry chain is now: Gemini full → Groq 70B → polite-error message.
+# Backwards-compat shims kept for: _ai_answer_with_review (= retry now),
+# _try_groq, _countdown_and_retry — chatbot.py imports those names.
 # ═══════════════════════════════════════════════════════════════
-ENABLE_SELF_REVIEW = True   # feature flag — set False để revert nhanh
+
+ENABLE_SELF_REVIEW = False  # Phase-3 disabled
 
 
-def _should_self_review(query: str, draft: str, context: dict) -> bool:
-    """Trigger self-review chỉ khi đáng đầu tư thêm 1-2 calls AI."""
-    if not ENABLE_SELF_REVIEW:
-        return False
-    q = _strip_diacritics_simple((query or '').lower())
-    if not _is_data_dependent(query):
-        return False
-    high_stakes_kw = [
-        'nen mua', 'nen ban', 'should i', 'buy', 'sell', 'hold',
-        'du bao', 'forecast', 'phan tich', 'so sanh', 'compare',
-        'tom tat', 'review', 'tinh hinh', 'overview',
-    ]
-    if not any(k in q for k in high_stakes_kw):
-        return False
-    if not draft or len(draft) < 120:
-        return False
-    if not context or 'close_vnd' not in context:
-        return False
-    # Skip nếu Gemini đang rate-limited — không phí thêm call
-    if int(st.session_state.get('_last_gemini_retry_s', 0)) > 0:
-        return False
-    return True
+def _ai_answer_with_review(query: str, context: dict, lang: str):
+    """Backwards-compat shim. Phase-3 dropped self-review; this just calls
+    the simplified retry chain so the chatbot.py import path stays valid."""
+    return _ai_answer_with_retry(query, context, lang)
 
 
-def _build_critique_prompt(query: str, draft: str, context: dict, lang: str) -> str:
-    """Prompt yêu cầu AI review chính bản nháp."""
-    from core.chatbot_ai import build_context_string
-    ctx_str = build_context_string(context or {})
-    if lang == 'EN':
-        return (
-            f"You just wrote the following draft answer for the user. Review YOUR OWN draft.\n\n"
-            f"[DRAFT]\n{draft}\n\n"
-            f"[ORIGINAL DATA]\n{ctx_str}\n\n"
-            f"[USER QUESTION]\n{query}\n\n"
-            f"Check 3 criteria:\n"
-            f"1. NUMBERS: do all numbers in the DRAFT match the ORIGINAL DATA? (price, MAPE, forecasts)\n"
-            f"2. COMPLETENESS: does it actually answer the question? what's missing?\n"
-            f"3. DISCLAIMER: if user asked buy/sell and the disclaimer is missing → flag.\n\n"
-            f"Reply EXACTLY in this format:\n"
-            f"- If OK: just write 'OK'\n"
-            f"- If issues: list 1-3 specific issues, one per line, starting with '- '\n"
-            f"DO NOT rewrite the answer. Just critique."
-        )
-    return (
-        f"Bạn vừa viết câu trả lời sau cho user. Review CHÍNH BẢN NHÁP của bạn.\n\n"
-        f"[DRAFT]\n{draft}\n\n"
-        f"[DỮ LIỆU GỐC]\n{ctx_str}\n\n"
-        f"[CÂU HỎI USER]\n{query}\n\n"
-        f"Kiểm tra 3 tiêu chí:\n"
-        f"1. SỐ LIỆU: mọi con số trong DRAFT có khớp DỮ LIỆU GỐC? (giá, MAPE, dự báo)\n"
-        f"2. ĐẦY ĐỦ: có trả lời đúng câu user hỏi? thiếu điểm nào?\n"
-        f"3. CẢNH BÁO: nếu user hỏi mua/bán mà thiếu disclaimer NCKH → flag.\n\n"
-        f"Trả lời CHÍNH XÁC theo format:\n"
-        f"- Nếu OK: chỉ ghi 'OK'\n"
-        f"- Nếu có vấn đề: liệt kê 1-3 issue cụ thể, mỗi issue 1 dòng bắt đầu '- '\n"
-        f"KHÔNG viết lại câu trả lời, chỉ critique."
-    )
+def _ai_answer_with_retry(query: str, context: dict, lang: str):
+    """Simple two-step retry chain.
 
+      1. Gemini (full system prompt, real model)
+      2. Groq llama-3.3-70b-versatile (only if GROQ_API_KEY configured)
+      3. Otherwise return None — caller surfaces a polite error.
 
-def _build_refine_prompt(draft: str, critique: str, lang: str) -> str:
-    """Prompt yêu cầu AI viết lại draft theo critique."""
-    if lang == 'EN':
-        return (
-            f"Here is your draft answer:\n[DRAFT]\n{draft}\n\n"
-            f"A reviewer flagged these issues:\n[ISSUES]\n{critique}\n\n"
-            f"Rewrite the answer fixing every issue. Keep the same style "
-            f"(short, light markdown, ≤4 paragraphs, formulas in backticks/fenced blocks). "
-            f"DO NOT mention the reviewer."
-        )
-    return (
-        f"Đây là câu trả lời nháp của bạn:\n[DRAFT]\n{draft}\n\n"
-        f"Reviewer đã chỉ ra các vấn đề:\n[ISSUES]\n{critique}\n\n"
-        f"Viết lại câu trả lời, sửa hết các vấn đề trên. Giữ nguyên phong cách "
-        f"(ngắn gọn, markdown nhẹ, ≤4 đoạn, công thức trong backtick/fenced block). "
-        f"KHÔNG nhắc đến reviewer."
-    )
-
-
-def _ai_answer_with_review(query: str, context: dict, lang: str) -> str | None:
-    """Wrap _ai_answer_with_retry với self-review chain.
-
-    Pattern: Generate → (Critique → Refine) chỉ khi đáng. Hard cap 3 LLM calls.
-    Fail-open: bất kỳ bước critique/refine nào fail → return draft nguyên bản.
-    """
-    # Step 1: Generate (existing path)
-    draft = _ai_answer_with_retry(query, context, lang)
-    if not draft:
-        return None
-    if not _should_self_review(query, draft, context):
-        return draft
-
-    # Step 2: Critique
-    try:
-        with st.spinner('● ● ● ' + (t('chatbot.thinking') if lang == 'VI' else 'Reviewing answer...')):
-            critique = ask_gemini(
-                _build_critique_prompt(query, draft, context, lang),
-                context=None, lang=lang, slim_system=True,
-            )
-    except (RateLimitError, QuotaExhaustedError):
-        return draft
-    except Exception as e:
-        _log(f'[Self-Review] critique error: {str(e)[:120]}')
-        return draft
-
-    if not critique:
-        return draft
-    c = critique.strip()
-    if c.upper().startswith('OK') or len(c) < 20:
-        return draft
-    # Critique phải có ít nhất 1 dòng bắt đầu "-" → mới đáng refine
-    if not any(line.strip().startswith('-') for line in c.splitlines()):
-        return draft
-
-    # Step 3: Refine
-    try:
-        with st.spinner('● ● ● ' + (t('chatbot.thinking') if lang == 'VI' else 'Refining...')):
-            refined = ask_gemini(
-                _build_refine_prompt(draft, c, lang),
-                context=context, lang=lang,
-            )
-    except Exception as e:
-        _log(f'[Self-Review] refine error: {str(e)[:120]}')
-        return draft
-
-    if refined and refined.strip():
-        _log('[Self-Review] refined applied')
-        return refined.strip()
-    return draft
-
-
-def _ai_answer_with_retry(query: str, context: dict, lang: str) -> str | None:
-    """Multi-provider retry chain. Return None chỉ khi TẤT CẢ providers fail.
-
-    Flow:
-      1. Gemini full → rate limit/fail
-      2. Gemini slim → rate limit/fail
-      3. Groq 70B (nếu có GROQ_API_KEY) → LLaMA 3.3
-      4. Groq 8B (nếu có GROQ_API_KEY) → LLaMA 3.1 Instant
-      5. Countdown + Gemini retry cuối
-
-    Groq free tier ~14k req/ngày, 30 req/phút. Khi Gemini cạn quota (20/phút),
-    tự động switch sang Groq. Graceful nếu chưa config GROQ_API_KEY.
-
-    v6: Prepend conversation history (last 2 turns) → bot có memory câu hỏi trước.
-    """
-    _rate_limit_wait = 0
+    Conversation history (last 2 turns) is prefixed to the prompt so the
+    bot remembers context across turns (memory unchanged from Phase-2)."""
     _groq_ready = is_groq_available()
 
-    # Lý thuyết thuần → không gửi context (tiết kiệm token + share cache cross-ticker)
+    # Theory queries → drop ticker context (saves tokens, lets cache share
+    # across tickers). Only applies to data-independent questions.
     _ctx_to_send = None if _is_theory_query(query) else context
 
-    # Conversation memory: prepend last 2 turns (max 4 messages)
     _history = _get_recent_history(max_turns=2)
     _history_prefix = _format_history_prefix(_history, lang)
-    # Câu hỏi để gửi đến AI: gắn history prefix + current query
     _query_with_history = (_history_prefix + query) if _history_prefix else query
 
-    # ── Attempt 1: Gemini full ──
+    # ── Attempt 1: Gemini ──
     try:
         with st.spinner('● ● ● ' + t('chatbot.thinking')):
             resp = ask_gemini(_query_with_history, context=_ctx_to_send, lang=lang)
         if resp and resp.strip():
             return resp
-        _log('[Chatbot] Gemini 1 empty')
+        _log('[Chatbot] Gemini empty response')
     except QuotaExhaustedError:
         _log('[Chatbot] Gemini daily quota exhausted')
         if _groq_ready:
@@ -693,58 +567,32 @@ def _ai_answer_with_retry(query: str, context: dict, lang: str) -> str | None:
                 return r
         return None
     except RateLimitError as e:
-        _rate_limit_wait = int(getattr(e, 'wait_seconds', 30) or 30)
-        _rate_limit_wait = max(5, min(_rate_limit_wait, 60))
-        _log(f'[Chatbot] Gemini rate limited, wait={_rate_limit_wait}s')
-        st.session_state['_last_gemini_retry_s'] = _rate_limit_wait
+        _wait = int(getattr(e, 'wait_seconds', 30) or 30)
+        st.session_state['_last_gemini_retry_s'] = max(5, min(_wait, 60))
         st.session_state['_last_gemini_error'] = str(e)
-        # Fast path: có Groq → dùng Groq ngay thay vì đợi Gemini reset
+        _log(f'[Chatbot] Gemini rate limited (~{_wait}s)')
         if _groq_ready:
             r = _try_groq(_query_with_history, _ctx_to_send, lang)
             if r:
                 return r
+        return None
     except Exception as e:
-        _log(f'[Chatbot] Gemini 1 error: {str(e)[:150]}')
+        _log(f'[Chatbot] Gemini error: {str(e)[:150]}')
 
-    # ── Attempt 2: Gemini slim ──
-    try:
-        ticker = (context or {}).get('ticker', 'FPT')
-        if lang == 'EN':
-            slim = (f'User (analyzing HOSE ticker {ticker}) asked: "{query}"\n'
-                    f'Reply naturally in 1-4 sentences.')
-        else:
-            slim = (f'Người dùng (đang phân tích mã HOSE {ticker}) hỏi: "{query}"\n'
-                    f'Hãy trả lời tự nhiên 1-4 câu.')
-        with st.spinner('● ● ● ' + t('chatbot.thinking')):
-            resp = ask_gemini(slim, context=None, lang=lang, slim_system=True)
-        if resp and resp.strip():
-            return resp
-        _log('[Chatbot] Gemini 2 empty')
-    except RateLimitError as e:
-        if _rate_limit_wait <= 0:
-            _rate_limit_wait = int(getattr(e, 'wait_seconds', 30) or 30)
-            _rate_limit_wait = max(5, min(_rate_limit_wait, 60))
-    except Exception as e:
-        _log(f'[Chatbot] Gemini 2 error: {str(e)[:150]}')
-
-    # ── Attempt 3: Groq fallback (nếu đã config key) ──
+    # ── Attempt 2: Groq llama-3.3-70b ──
     if _groq_ready:
         r = _try_groq(_query_with_history, _ctx_to_send, lang)
         if r:
             return r
-
-    # ── Attempt 4: countdown + Gemini retry cuối ──
-    if _rate_limit_wait > 0:
-        resp = _countdown_and_retry(query, context, lang, _rate_limit_wait)
-        if resp:
-            return resp
-
     return None
 
 
-def _try_groq(query: str, context: dict, lang: str) -> str | None:
-    """Thử Groq: LLaMA 3.3 70B → 3.1 8B. None nếu fail toàn bộ."""
-    # 70B (chất lượng)
+def _try_groq(query: str, context: dict, lang: str):
+    """Single shot: Groq llama-3.3-70b-versatile only.
+
+    8B fallback removed in Phase-3 — quality of 70B is already strong and
+    Groq's free-tier rate limit on 70B is generous enough for chat usage.
+    """
     try:
         with st.spinner('● ● ● ' + t('chatbot.thinking')):
             resp = ask_groq(query, context=context, lang=lang)
@@ -752,85 +600,13 @@ def _try_groq(query: str, context: dict, lang: str) -> str | None:
             _log('[Chatbot] Groq 70B OK')
             return resp
     except RateLimitError:
-        _log('[Chatbot] Groq 70B rate limited — try 8B')
+        _log('[Chatbot] Groq rate limited')
     except Exception as e:
-        _log(f'[Chatbot] Groq 70B error: {str(e)[:150]}')
-
-    # 8B (tốc độ, rate limit rộng hơn)
-    try:
-        ticker = (context or {}).get('ticker', 'FPT')
-        if lang == 'EN':
-            slim = f'Ticker {ticker}. User: "{query}". Reply naturally 1-4 sentences.'
-        else:
-            slim = f'Mã {ticker}. User: "{query}". Trả lời tự nhiên 1-4 câu.'
-        with st.spinner('● ● ● ' + t('chatbot.thinking')):
-            resp = ask_groq(slim, context=None, lang=lang, slim_system=True)
-        if resp and resp.strip():
-            _log('[Chatbot] Groq 8B OK')
-            return resp
-    except Exception as e:
-        _log(f'[Chatbot] Groq 8B error: {str(e)[:150]}')
+        _log(f'[Chatbot] Groq error: {str(e)[:150]}')
     return None
 
 
-def _countdown_and_retry(query: str, context: dict, lang: str, wait_seconds: int) -> str | None:
-    """Hiện countdown trong spinner rồi thử gọi Gemini lần cuối."""
-    import time as _time
-
-    # SVG hourglass tự build — 2 tam giác ngược + cát rơi, animation xoay 180deg
-    _svg_hourglass = (
-        '<svg class="hourglass-svg" width="16" height="16" viewBox="0 0 24 24" '
-        'fill="none" stroke="currentColor" stroke-width="2" '
-        'stroke-linecap="round" stroke-linejoin="round" '
-        'style="flex-shrink:0;animation:hg-flip 1.4s ease-in-out infinite">'
-        '<path d="M5 22h14"/>'
-        '<path d="M5 2h14"/>'
-        '<path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414'
-        'A2 2 0 0 0 7 17.828V22"/>'
-        '<path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414'
-        'A2 2 0 0 0 17 6.172V2"/>'
-        '<path d="M9.5 8h5" stroke-width="1.5" opacity="0.5"/>'
-        '</svg>'
-    )
-    _anim_css = (
-        '<style>@keyframes hg-flip{'
-        '0%,45%{transform:rotate(0deg)}'
-        '55%,100%{transform:rotate(180deg)}'
-        '}</style>'
-    )
-
-    _wait_label_fmt = ('Waiting {s}s for Gemini rate limit to reset…'
-                       if lang == 'EN'
-                       else 'Đang đợi {s}s để Gemini reset rate limit…')
-
-    placeholder = st.empty()
-    try:
-        for remaining in range(wait_seconds, 0, -1):
-            placeholder.markdown(
-                f'{_anim_css}'
-                f'<div style="display:flex;align-items:center;gap:8px;'
-                f'padding:8px 14px;border-radius:8px;'
-                f'background:rgba(96,165,250,0.12);'
-                f'border:1px solid rgba(96,165,250,0.35);'
-                f'color:#3B82F6;font-size:13px;font-weight:500">'
-                f'{_svg_hourglass}'
-                f'<span>{_wait_label_fmt.format(s=remaining)}</span></div>',
-                unsafe_allow_html=True)
-            _time.sleep(1)
-        placeholder.empty()
-
-        # Final retry với slim prompt
-        ticker = (context or {}).get('ticker', 'FPT')
-        if lang == 'EN':
-            slim = f'User (ticker {ticker}) asked: "{query}"\nReply in 1-4 sentences.'
-        else:
-            slim = f'Người dùng (mã {ticker}) hỏi: "{query}"\nTrả lời 1-4 câu.'
-        with st.spinner('● ● ● ' + t('chatbot.thinking')):
-            resp = ask_gemini(slim, context=None, lang=lang, slim_system=True)
-        if resp and resp.strip():
-            return resp
-    except Exception as e:
-        _log(f'[Chatbot Countdown Retry Error] {str(e)[:200]}')
-    finally:
-        placeholder.empty()
-    return None
+def _countdown_and_retry(query: str, context: dict, lang: str, wait_seconds: int):
+    """Backwards-compat shim. Phase-3 removed countdown UX; this just calls
+    the simplified retry chain (no sleep)."""
+    return _ai_answer_with_retry(query, context, lang)

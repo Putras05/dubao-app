@@ -14,11 +14,11 @@ from core.chatbot_ai import (
 )
 
 
-# Thứ tự ưu tiên model — llama-3.3-70b cho chất lượng; 8b-instant cho fallback tốc độ
+# Phase-3 simplification (2026-05-06): keep only the high-quality 70B model.
+# 8B / Gemma2 fallbacks removed — Groq's free-tier rate limit on 70B is
+# generous enough for chat-class workloads.
 _MODEL_CANDIDATES = [
-    'llama-3.3-70b-versatile',     # chất lượng cao nhất
-    'llama-3.1-8b-instant',         # fallback tốc độ khi 70b bị rate limit
-    'gemma2-9b-it',                 # fallback cuối (Google Gemma)
+    'llama-3.3-70b-versatile',
 ]
 
 
