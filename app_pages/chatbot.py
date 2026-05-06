@@ -182,6 +182,165 @@ def _strip_legacy_html(text: str) -> str:
     return text.strip()
 
 
+# Use (?![a-zA-Z]) instead of \b — \b doesn't trigger before `_` (word char in regex)
+_NB = r'(?![a-zA-Z])'
+
+_GREEK_MAP = {
+    r'\\alpha' + _NB: 'α', r'\\beta' + _NB: 'β', r'\\gamma' + _NB: 'γ',
+    r'\\delta' + _NB: 'δ', r'\\epsilon' + _NB: 'ε', r'\\varepsilon' + _NB: 'ε',
+    r'\\zeta' + _NB: 'ζ', r'\\eta' + _NB: 'η', r'\\theta' + _NB: 'θ',
+    r'\\iota' + _NB: 'ι', r'\\kappa' + _NB: 'κ', r'\\lambda' + _NB: 'λ',
+    r'\\mu' + _NB: 'μ', r'\\nu' + _NB: 'ν', r'\\xi' + _NB: 'ξ',
+    r'\\omicron' + _NB: 'ο', r'\\pi' + _NB: 'π', r'\\rho' + _NB: 'ρ',
+    r'\\sigma' + _NB: 'σ', r'\\tau' + _NB: 'τ', r'\\upsilon' + _NB: 'υ',
+    r'\\phi' + _NB: 'φ', r'\\chi' + _NB: 'χ', r'\\psi' + _NB: 'ψ', r'\\omega' + _NB: 'ω',
+    r'\\Alpha' + _NB: 'Α', r'\\Beta' + _NB: 'Β', r'\\Gamma' + _NB: 'Γ',
+    r'\\Delta' + _NB: 'Δ', r'\\Epsilon' + _NB: 'Ε', r'\\Zeta' + _NB: 'Ζ',
+    r'\\Eta' + _NB: 'Η', r'\\Theta' + _NB: 'Θ', r'\\Iota' + _NB: 'Ι',
+    r'\\Kappa' + _NB: 'Κ', r'\\Lambda' + _NB: 'Λ', r'\\Mu' + _NB: 'Μ',
+    r'\\Nu' + _NB: 'Ν', r'\\Xi' + _NB: 'Ξ', r'\\Omicron' + _NB: 'Ο',
+    r'\\Pi' + _NB: 'Π', r'\\Rho' + _NB: 'Ρ', r'\\Sigma' + _NB: 'Σ',
+    r'\\Tau' + _NB: 'Τ', r'\\Upsilon' + _NB: 'Υ', r'\\Phi' + _NB: 'Φ',
+    r'\\Chi' + _NB: 'Χ', r'\\Psi' + _NB: 'Ψ', r'\\Omega' + _NB: 'Ω',
+}
+
+_OP_MAP = {
+    r'\\sum' + _NB: 'Σ', r'\\prod' + _NB: 'Π', r'\\int' + _NB: '∫',
+    r'\\cdot' + _NB: '·', r'\\times' + _NB: '×', r'\\div' + _NB: '÷',
+    r'\\pm' + _NB: '±', r'\\mp' + _NB: '∓',
+    r'\\approx' + _NB: '≈', r'\\equiv' + _NB: '≡', r'\\sim' + _NB: '∼',
+    r'\\leq' + _NB: '≤', r'\\geq' + _NB: '≥', r'\\neq' + _NB: '≠',
+    r'\\ne' + _NB: '≠', r'\\le' + _NB: '≤', r'\\ge' + _NB: '≥',
+    r'\\ll' + _NB: '≪', r'\\gg' + _NB: '≫',
+    r'\\to' + _NB: '→', r'\\rightarrow' + _NB: '→', r'\\leftarrow' + _NB: '←',
+    r'\\Rightarrow' + _NB: '⇒', r'\\Leftarrow' + _NB: '⇐',
+    r'\\infty' + _NB: '∞', r'\\partial' + _NB: '∂', r'\\nabla' + _NB: '∇',
+    r'\\in' + _NB: '∈', r'\\notin' + _NB: '∉',
+    r'\\subset' + _NB: '⊂', r'\\supset' + _NB: '⊃',
+    r'\\cup' + _NB: '∪', r'\\cap' + _NB: '∩', r'\\emptyset' + _NB: '∅',
+    r'\\forall' + _NB: '∀', r'\\exists' + _NB: '∃',
+    r'\\left' + _NB: '', r'\\right' + _NB: '',
+    r'\\,': ' ', r'\\;': ' ', r'\\!': '', r'\\:': ' ',
+    r'\\quad' + _NB: '   ', r'\\qquad' + _NB: '      ',
+    r'\\dots' + _NB: '…', r'\\cdots' + _NB: '⋯', r'\\ldots' + _NB: '…',
+    r'\\vdots' + _NB: '⋮', r'\\ddots' + _NB: '⋱',
+}
+
+# Placeholders for sub/sup tags — single control bytes so regex won't false-match.
+# Underscores and letters in placeholders caused infinite-recursion-like bugs
+# where the `_X` subscript regex matched the closing `_SUB` placeholder text.
+_SUB_O = '\x02'
+_SUB_C = '\x03'
+_SUP_O = '\x04'
+_SUP_C = '\x05'
+
+
+def _latex_to_pretty(s: str) -> str:
+    """Convert simple LaTeX → Unicode + sub/sup placeholders for math display.
+
+    Handles: \\hat, \\bar, \\tilde, \\sqrt, \\frac, Greek (lower+upper),
+    operators (sum, prod, cdot, approx, leq, geq, etc.), _{}, ^{}, \\text,
+    \\mathrm, multi-char sub/sup, basic LaTeX cleanup.
+
+    Output may contain placeholder tokens (\\x01SUB\\x01) that callers must
+    replace with real <sub>/<sup> tags AFTER html.escape.
+    """
+    import re as _re
+    if not s:
+        return ''
+    # Functions with braces (handle nested-friendly first)
+    s = _re.sub(r'\\hat\s*\{([^{}]*)\}', lambda m: m.group(1) + '̂', s)
+    s = _re.sub(r'\\hat\s+(\w)', lambda m: m.group(1) + '̂', s)
+    s = _re.sub(r'\\bar\s*\{([^{}]*)\}', lambda m: m.group(1) + '̄', s)
+    s = _re.sub(r'\\bar\s+(\w)', lambda m: m.group(1) + '̄', s)
+    s = _re.sub(r'\\tilde\s*\{([^{}]*)\}', lambda m: m.group(1) + '̃', s)
+    s = _re.sub(r'\\sqrt\s*\{([^{}]*)\}', r'√(\1)', s)
+    s = _re.sub(r'\\frac\s*\{([^{}]*)\}\s*\{([^{}]*)\}', r'(\1)⁄(\2)', s)
+    s = _re.sub(r'\\text\s*\{([^{}]*)\}', r'\1', s)
+    s = _re.sub(r'\\mathrm\s*\{([^{}]*)\}', r'\1', s)
+    s = _re.sub(r'\\operatorname\s*\{([^{}]*)\}', r'\1', s)
+    s = _re.sub(r'\\mathbb\s*\{([^{}]*)\}', r'\1', s)
+    # Greek + operators (apply LONGEST patterns first → \\varepsilon before \\epsilon
+    # is already set by \\varepsilon mapping — Python dict ordered, but safer to
+    # iterate in pattern-length-descending order)
+    for pat, repl in sorted(_GREEK_MAP.items(), key=lambda x: -len(x[0])):
+        s = _re.sub(pat, repl, s)
+    for pat, repl in sorted(_OP_MAP.items(), key=lambda x: -len(x[0])):
+        s = _re.sub(pat, repl, s)
+    # Subscripts / superscripts → use HTML <sub>/<sup> via placeholder tokens
+    s = _re.sub(r'_\{([^{}]+)\}', lambda m: f'{_SUB_O}{m.group(1)}{_SUB_C}', s)
+    s = _re.sub(r'_([0-9a-zA-Z])', lambda m: f'{_SUB_O}{m.group(1)}{_SUB_C}', s)
+    s = _re.sub(r'\^\{([^{}]+)\}', lambda m: f'{_SUP_O}{m.group(1)}{_SUP_C}', s)
+    s = _re.sub(r'\^([0-9a-zA-Z])', lambda m: f'{_SUP_O}{m.group(1)}{_SUP_C}', s)
+    # Cleanup leftover braces / backslashes
+    s = s.replace('\\\\', '\n')      # \\ row separator
+    s = _re.sub(r'\\([a-zA-Z]+)', r'\1', s)  # strip remaining \cmd → cmd
+    s = s.replace('{', '').replace('}', '')
+    return s
+
+
+def _restore_subsup(escaped: str) -> str:
+    """After html.escape, restore <sub>/<sup> tags from placeholder tokens."""
+    return (escaped
+            .replace(_SUB_O, '<sub style="font-size:0.78em;line-height:0">')
+            .replace(_SUB_C, '</sub>')
+            .replace(_SUP_O, '<sup style="font-size:0.78em;line-height:0">')
+            .replace(_SUP_C, '</sup>'))
+
+
+def _looks_like_math(text: str) -> bool:
+    """Heuristic: does this look like a math formula? Used to upgrade fenced
+    code blocks to math display when AI puts formulas in ``` blocks.
+    """
+    if not text:
+        return False
+    indicators = (
+        '\\hat', '\\bar', '\\beta', '\\phi', '\\sigma', '\\sum', '\\sqrt',
+        '\\frac', '\\text', '\\alpha', '\\Sigma', '\\cdot', '\\approx',
+        'φ', 'β', 'σ', 'Σ', 'Ŷ', 'ŷ', '·', '≈', '≤', '≥', '√',
+        'Σ_', '_{', '^{', '\\\\',
+    )
+    if any(ind in text for ind in indicators):
+        return True
+    # Math-like equations: short line with = and operators
+    short = text.strip()
+    if len(short) < 200 and '=' in short and any(op in short for op in ['+', '-', '·', '*', '/', '^']):
+        # Avoid false positives for code (functions, brackets-with-args)
+        if not any(kw in short for kw in ['def ', 'function ', 'return ', 'import ', 'from ', '=>', '::', '->', 'print(']):
+            return True
+    return False
+
+
+def _math_display_html(content: str) -> str:
+    """Render math content as a styled display block (italic serif, centered)."""
+    pretty = _latex_to_pretty(content)
+    import html as _hlib
+    body = _restore_subsup(_hlib.escape(pretty))
+    return (
+        '<div style="font-family:\'Cambria Math\',\'Latin Modern Math\',\'STIX Two Math\','
+        '\'Times New Roman\',Cambria,Georgia,serif;font-style:italic;font-size:1.22em;'
+        'text-align:center;padding:14px 18px;margin:0.7em 0;line-height:1.9;'
+        'background:rgba(96,165,250,0.06);'
+        'border-left:3px solid rgba(96,165,250,0.55);'
+        'border-radius:4px;overflow-x:auto;letter-spacing:0.015em;'
+        f'white-space:pre-wrap">{body}</div>'
+    )
+
+
+def _math_inline_html(content: str) -> str:
+    """Render inline math — italic serif, slight tint."""
+    pretty = _latex_to_pretty(content)
+    import html as _hlib
+    body = _restore_subsup(_hlib.escape(pretty))
+    return (
+        '<span style="font-family:\'Cambria Math\',\'Latin Modern Math\',\'STIX Two Math\','
+        '\'Times New Roman\',Cambria,Georgia,serif;font-style:italic;'
+        'background:rgba(96,165,250,0.10);'
+        'padding:1px 6px;border-radius:3px;font-size:1.05em;'
+        f'letter-spacing:0.015em">{body}</span>'
+    )
+
+
 def _md_to_html(text: str) -> str:
     """Convert markdown to safe HTML — supports fenced code, tables, math, lists, headings.
 
@@ -321,31 +480,30 @@ def _md_to_html(text: str) -> str:
     if in_ol: out.append('</ol>')
     html_str = '\n'.join(out)
 
-    # ── Post-process: restore fenced code blocks (real code, not math) ──
+    # ── Post-process: restore fenced code blocks ──
+    # Smart routing: if content looks like math → render as math display.
+    # Otherwise → real code block (monospace, scrollable).
     for idx, code in enumerate(code_blocks):
-        rendered = (
-            '<pre style="background:rgba(100,116,139,.10);'
-            'border:1px solid rgba(100,116,139,.20);border-radius:6px;'
-            'padding:8px 12px;margin:.4em 0;overflow-x:auto;'
-            'font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;'
-            'font-size:.92em;line-height:1.5;white-space:pre">'
-            f'<code>{_hlib.escape(code)}</code></pre>'
-        )
+        if _looks_like_math(code):
+            rendered = _math_display_html(code)
+        else:
+            rendered = (
+                '<pre style="background:rgba(100,116,139,.10);'
+                'border:1px solid rgba(100,116,139,.20);border-radius:6px;'
+                'padding:8px 12px;margin:.4em 0;overflow-x:auto;'
+                'font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;'
+                'font-size:.92em;line-height:1.5;white-space:pre">'
+                f'<code>{_hlib.escape(code)}</code></pre>'
+            )
         html_str = html_str.replace(f'\x00CODEBLOCK{idx}\x00', rendered)
 
-    # ── Post-process: restore math blocks as RAW $$...$$ + $...$ ──
-    # KaTeX auto-render scans parent DOM and renders these. Wrap in
-    # styled container with class="katex-block-wrap" / "katex-inline-wrap"
-    # for visual fallback + skip-tag protection.
+    # ── Post-process: restore $$...$$ display math (LaTeX → Unicode pretty) ──
     for idx, math in enumerate(math_blocks):
-        # Use \[ ... \] as alternate delimiter — easier to escape and KaTeX
-        # auto-render handles it natively. Content stays raw LaTeX (no html escape).
-        rendered = f'<span class="math-block">$${math}$$</span>'
-        html_str = html_str.replace(f'\x00MATHBLOCK{idx}\x00', rendered)
+        html_str = html_str.replace(f'\x00MATHBLOCK{idx}\x00', _math_display_html(math))
 
+    # ── Post-process: restore $...$ inline math ──
     for idx, math in enumerate(math_inline):
-        rendered = f'<span class="math-inline">${math}$</span>'
-        html_str = html_str.replace(f'\x00MATHINLINE{idx}\x00', rendered)
+        html_str = html_str.replace(f'\x00MATHINLINE{idx}\x00', _math_inline_html(math))
 
     return html_str
 
