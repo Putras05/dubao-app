@@ -1,9 +1,13 @@
-"""Response cache — two layers: session-state (fast) + disk JSON (persistent, 24-hour TTL).
+"""Response cache — narrow scope after Phase-4 (2026-05-06).
 
-- Cache key gồm PROMPT_VERSION → bump version khi đổi system prompt → cache cũ tự ignore
-- TTL 24 giờ (tránh giá đóng cửa lỗi thời trong demo)
-- Fuzzy matching: normalize query (bỏ dấu, bỏ dấu câu, bỏ stop words nhẹ) →
-  "AR là gì?" và "AR la sao" cùng hit cache
+Phase-4: cache fires ONLY for pure-theory questions that match a known
+keyword set (AR, MAPE, RMSE, Ichimoku, Kumo, etc.) AND have no ticker
+context. Everything else bypasses the cache entirely so live answers
+always reflect fresh prices.
+
+The fuzzy MD5 cross-ticker layer is gone — cache key is now an EXACT
+normalized query string + lang only. No more sharing across ambiguous
+inputs.
 """
 import hashlib
 import json
@@ -21,68 +25,83 @@ _TTL_HOURS  = 24
 _MEM_KEY    = '_ai_mem_cache'
 _MEM_MAX    = 200
 
-# Stop words nhẹ để fuzzy — chỉ loại từ nối không thay đổi nghĩa câu hỏi
-_FUZZY_STOP = {
-    # VI filler
-    'la', 'thi', 'ma', 'nhe', 'vay', 'nha', 'ban', 'minh', 'toi', 'a',
-    'co', 'nao', 'sao', 'gi', 'the', 'di', 'duoc', 'dc', 'voi', 'cua',
-    # EN filler
-    'is', 'the', 'a', 'an', 'what', 'how', 'please', 'can', 'you', 'me',
+# Hard-list of theory keywords. The query MUST contain at least one of
+# these tokens (case-insensitive, diacritic-insensitive) AND be a clear
+# theory question to be eligible for cache.
+_THEORY_TOKENS = {
+    'ar(1)', 'ar(p)', 'ar(2)', 'ar(3)', 'ar', 'mlr', 'cart',
+    'mape', 'rmse', 'mae', 'r2adj', 'r²adj', 'r2', 'r²',
+    'ichimoku', 'kumo', 'tenkan', 'kijun', 'chikou', 'senkou',
+    'autoregressive', 'random walk', 'random-walk',
+    'volatility', 'sigma', 'std',
 }
+
+_THEORY_QUESTION_MARKERS = (
+    'la gi', 'la sao', 'nghia la', 'cong thuc', 'phuong trinh',
+    'giai thich', 'dinh nghia', 'hoat dong', 'y nghia',
+    'what is', 'what are', 'how does', 'how do', 'explain',
+    'meaning', 'formula', 'equation', 'definition', 'derivation',
+)
+
+_TICKER_TOKENS = {'fpt', 'hpg', 'vnm'}
 
 
 def _normalize_query(query: str) -> str:
-    """Chuẩn hoá câu hỏi để fuzzy match: lowercase, bỏ dấu tiếng Việt,
-    bỏ dấu câu, bỏ stop words nhẹ, sort tokens để thứ tự không ảnh hưởng.
-
-    Ví dụ:
-      'AR là gì?'          → 'ar'
-      'AR la sao?'          → 'ar'
-      'MLR hoạt động thế nào'→ 'hoat dong mlr'
-    """
+    """Strict normalization: lowercase, strip diacritics, collapse whitespace,
+    strip punctuation. Tokens are NOT sorted (order-sensitive cache key)."""
     if not query:
         return ''
     s = query.strip().lower()
     s = unicodedata.normalize('NFKD', s)
     s = ''.join(c for c in s if not unicodedata.combining(c))
     s = s.replace('đ', 'd').replace('Đ', 'd')
-    s = re.sub(r'[^\w\s]', ' ', s)
+    s = re.sub(r'[^\w\s\(\)\^\.²³]', ' ', s)
     s = re.sub(r'\s+', ' ', s).strip()
-    tokens = [w for w in s.split() if w and w not in _FUZZY_STOP and len(w) > 0]
-    tokens.sort()
-    return ' '.join(tokens)
+    return s
 
 
-def _is_theory_query(query: str) -> bool:
-    """Câu hỏi lý thuyết — cache có thể share cross-ticker (bỏ ticker khỏi key)."""
-    q = (query or '').lower()
-    theory_kws = [
-        'là gì', 'là sao', 'nghĩa là', 'hoạt động', 'công thức', 'phương trình',
-        'giải thích', 'định nghĩa', 'khác nhau', 'khác gì', 'so sánh',
-        'nên chọn', 'khi nào', 'tại sao', 'ý nghĩa', 'thang đánh giá',
-        'what is', 'what are', 'how does', 'how do', 'explain', 'meaning',
-        'difference', 'compare', 'formula', 'equation', 'when to use',
-        'why', 'definition',
-    ]
-    data_kws = ['giá', 'price', 'dự báo', 'forecast', 'phân tích',
-                'analyze', 'analysis', 'hiện tại', 'current',
-                'phiên tới', 'next session', 'fpt', 'hpg', 'vnm']
-    return any(k in q for k in theory_kws) and not any(k in q for k in data_kws)
+def _is_pure_theory_query(query: str) -> bool:
+    """True iff the query is a clear theory question with no ticker context.
+
+    Requires:
+      - At least one theory question marker ("la gi", "what is", ...)
+      - At least one theory token (AR, MAPE, Ichimoku, ...)
+      - No ticker name (FPT/HPG/VNM)
+      - No data-dependent words (phan tich, du bao, gia, current, ...)
+    """
+    norm = _normalize_query(query)
+    if not norm:
+        return False
+    tokens = frozenset(norm.split())
+
+    if any(t in tokens for t in _TICKER_TOKENS):
+        return False
+
+    has_marker = any(m in norm for m in _THEORY_QUESTION_MARKERS)
+    if not has_marker:
+        return False
+
+    has_theory_token = (
+        any(tok in norm for tok in _THEORY_TOKENS)
+        or any(tok in tokens for tok in _THEORY_TOKENS)
+    )
+    if not has_theory_token:
+        return False
+
+    data_kws = ['phan tich', 'du bao', 'gia', 'price', 'forecast',
+                'analyze', 'analysis', 'hien tai', 'current',
+                'phien toi', 'next session', 'today', 'hom nay']
+    if any(k in norm for k in data_kws):
+        return False
+    return True
 
 
 # ── Key helpers ──────────────────────────────────────────────────────────────
-def _make_key(query: str, context: dict, lang: str) -> str:
-    """Fuzzy key: normalize query → câu tương tự cùng hit.
-    Câu lý thuyết: KHÔNG include ticker/p → cache share giữa các ticker (tối đa hiệu quả).
-    """
+def _make_key(query: str, lang: str) -> str:
+    """Phase-4 strict key: PROMPT_VERSION | normalized-query | lang.
+    No ticker/p in key — only theory queries reach this function."""
     normalized = _normalize_query(query)
-    if _is_theory_query(query):
-        # Share cache cross-ticker for pure theory questions
-        raw = f"{PROMPT_VERSION}|theory|{normalized}|{lang}"
-    else:
-        ticker = (context or {}).get('ticker', '')
-        p      = (context or {}).get('p', 0)
-        raw = f"{PROMPT_VERSION}|{normalized}|{ticker}|{p}|{lang}"
+    raw = f"{PROMPT_VERSION}|theory|{normalized}|{lang}"
     return hashlib.md5(raw.encode()).hexdigest()
 
 
@@ -122,8 +141,11 @@ def _save(data: dict):
 
 # ── Public API ────────────────────────────────────────────────────────────────
 def get(query: str, context: dict = None, lang: str = 'VI'):
-    """Return cached response or None."""
-    key = _make_key(query, context, lang)
+    """Return cached response, or None if the query is not a pure-theory hit
+    or no cache entry exists. Phase-4: only theory queries are cached."""
+    if not _is_pure_theory_query(query):
+        return None
+    key = _make_key(query, lang)
 
     mem = _mem_get(key)
     if mem:
@@ -147,8 +169,11 @@ def get(query: str, context: dict = None, lang: str = 'VI'):
 
 
 def set(query: str, context: dict = None, response: str = '', lang: str = 'VI'):
-    """Save response to both memory and disk cache."""
-    key = _make_key(query, context, lang)
+    """Save response to both memory and disk cache — only for pure-theory
+    queries. Calls on non-theory queries are silently ignored."""
+    if not _is_pure_theory_query(query):
+        return
+    key = _make_key(query, lang)
 
     _mem_set(key, response)
 
@@ -159,7 +184,7 @@ def set(query: str, context: dict = None, response: str = '', lang: str = 'VI'):
         'created':  now.isoformat(),
         'accessed': now.isoformat(),
         'expires':  (now + timedelta(hours=_TTL_HOURS)).isoformat(),
-        'version':  PROMPT_VERSION,  # audit trail
+        'version':  PROMPT_VERSION,
     }
     if len(data) > _MAX_ITEMS:
         sorted_keys = sorted(data, key=lambda k: data[k].get('accessed', ''))
