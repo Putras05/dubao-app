@@ -67,10 +67,16 @@ def _candlestick_section(df, ticker, _T, _is_en_cmp):
     _tf_col, _sma_col, _ichi_col = st.columns([3, 1, 1])
     with _tf_col:
         _tf_label = 'Khung thời gian' if not _is_en_cmp else 'Timeframe'
-        _selected_tf = st.segmented_control(
+        # NOTE: st.segmented_control needs Streamlit ≥1.34 — Streamlit Cloud
+        # may run an older runtime. Use st.radio(horizontal=True) which is
+        # available since 0.85 and styled like a segmented control via CSS
+        # (see ui/css.py inject_global_css `[data-testid="stRadio"]` rules).
+        _tf_options = ['1D', '1W', '1M', '3M']
+        _selected_tf = st.radio(
             _tf_label,
-            options=['1D', '1W', '1M', '3M'],
-            default='1D',
+            options=_tf_options,
+            index=0,  # default '1D'
+            horizontal=True,
             key=f'cs_tf_{ticker}',
             label_visibility='collapsed',
         )

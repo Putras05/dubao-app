@@ -1702,6 +1702,49 @@ html { scroll-behavior: smooth; }
 
 def inject_global_css() -> None:
     st.markdown(_GLOBAL_CSS, unsafe_allow_html=True)
+    st.markdown(_RADIO_SEGMENTED_CSS, unsafe_allow_html=True)
+
+
+# Style st.radio(horizontal=True) so it looks like a segmented control
+# (used in dashboard.py for the candlestick timeframe picker — replaces
+# st.segmented_control which requires Streamlit ≥1.34).
+_RADIO_SEGMENTED_CSS = """<style>
+[data-testid="stRadio"] > div[role="radiogroup"] {
+    display: inline-flex !important;
+    background: #F1F5F9;
+    border-radius: 10px;
+    padding: 4px;
+    gap: 2px;
+    border: 1px solid #E2E8F0;
+}
+[data-testid="stRadio"] > div[role="radiogroup"] > label {
+    margin: 0 !important;
+    padding: 6px 16px !important;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+    font-weight: 600 !important;
+    color: #64748B !important;
+}
+[data-testid="stRadio"] > div[role="radiogroup"] > label:hover {
+    background: rgba(30, 64, 175, 0.08);
+    color: #1E40AF !important;
+}
+[data-testid="stRadio"] > div[role="radiogroup"] > label:has(input:checked) {
+    background: linear-gradient(135deg, #1E40AF 0%, #3B82F6 100%) !important;
+    color: white !important;
+    box-shadow: 0 2px 6px rgba(30, 64, 175, 0.25);
+}
+[data-testid="stRadio"] > div[role="radiogroup"] > label:has(input:checked) p {
+    color: white !important;
+}
+[data-testid="stRadio"] > div[role="radiogroup"] input[type="radio"] {
+    display: none !important;
+}
+[data-testid="stRadio"] > div[role="radiogroup"] > label > div:first-child {
+    display: none !important;
+}
+</style>"""
 
 
 def inject_theme_css(T: dict) -> None:
