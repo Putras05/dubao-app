@@ -311,6 +311,60 @@ def _():
 
 
 # ─────────────────────────────────────────────────────────────────
+# Rule-based safety net — runs only when both AI providers fail
+# ─────────────────────────────────────────────────────────────────
+@test('31: _rule_fallback exists and returns string for known intent')
+def _():
+    from core.chatbot_logic import _rule_fallback
+    out = _rule_fallback('AR là gì?', 'VI')
+    assert isinstance(out, str) and len(out) > 30, (
+        f'Expected canned answer for AR theory, got {out!r}'
+    )
+
+
+@test('32: _rule_fallback returns None for unknown intent (no false-positive)')
+def _():
+    from core.chatbot_logic import _rule_fallback
+    out = _rule_fallback('viết hàm sắp xếp Python theo Kruskal', 'VI')
+    assert out is None, f'Should NOT match for unrelated query, got {out!r}'
+
+
+@test('33: _ai_answer_with_retry calls _rule_fallback when both AI fail')
+def _():
+    """When Gemini AND Groq are unavailable, retry chain must still produce
+    a rule-based answer for theory queries instead of returning None."""
+    import core.chatbot_logic as cl
+    # Patch ask_gemini & is_groq_available so both AI paths fail.
+    orig_ask_gemini = cl.ask_gemini
+    orig_groq_avail = cl.is_groq_available
+    orig_st = cl.st
+
+    class _StubSpinner:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    class _StubSt:
+        session_state = {}
+        def spinner(self, *a, **kw): return _StubSpinner()
+
+    def _fail_gemini(*a, **kw):
+        raise cl.QuotaExhaustedError('test: forced quota')
+
+    cl.ask_gemini = _fail_gemini
+    cl.is_groq_available = lambda: False
+    cl.st = _StubSt()
+    try:
+        resp = cl._ai_answer_with_retry('AR là gì?', context={}, lang='VI')
+        assert isinstance(resp, str) and len(resp) > 30, (
+            f'Expected rule-based fallback, got {resp!r}'
+        )
+    finally:
+        cl.ask_gemini = orig_ask_gemini
+        cl.is_groq_available = orig_groq_avail
+        cl.st = orig_st
+
+
+# ─────────────────────────────────────────────────────────────────
 # Run
 # ─────────────────────────────────────────────────────────────────
 def main():

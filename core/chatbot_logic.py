@@ -619,12 +619,36 @@ def _ai_answer_with_review(query: str, context: dict, lang: str):
     return _ai_answer_with_retry(query, context, lang)
 
 
+def _rule_fallback(query: str, lang: str):
+    """Last-resort rule-based fallback. Runs only after Gemini AND Groq fail.
+
+    Matches a fixed keyword set for common app-related questions (AR là gì,
+    MAPE là gì, FPT giá bao nhiêu, etc.) and returns a canned answer. Returns
+    None if no rule matches — caller surfaces a polite error in that case.
+
+    In normal conditions (≥99%), real AI handles every query and this never
+    runs; the user always gets a natural answer, never a hardcoded template.
+    """
+    try:
+        from core.chatbot_rules import get_rule_answer
+        rule_resp = get_rule_answer(query, lang)
+        if rule_resp and rule_resp.strip():
+            _log('[Chatbot] Rule-based safety-net OK')
+            return rule_resp
+    except Exception as e:
+        _log(f'[Chatbot] Rule-based error: {str(e)[:100]}')
+    return None
+
+
 def _ai_answer_with_retry(query: str, context: dict, lang: str):
-    """Simple two-step retry chain.
+    """Two-step retry chain + last-resort rule-based safety net.
 
       1. Gemini (full system prompt, real model)
       2. Groq llama-3.3-70b-versatile (only if GROQ_API_KEY configured)
-      3. Otherwise return None — caller surfaces a polite error.
+      3. Rule-based fallback (offline, keyword-matched canned answers) —
+         runs ONLY when both AI providers fail/empty; logs distinct marker
+         so we can verify in production that AI is doing the heavy lifting.
+      4. Otherwise return None — caller surfaces a polite error.
 
     Conversation history (last 2 turns) is prefixed to the prompt so the
     bot remembers context across turns (memory unchanged from Phase-2)."""
@@ -651,7 +675,7 @@ def _ai_answer_with_retry(query: str, context: dict, lang: str):
             r = _try_groq(_query_with_history, _ctx_to_send, lang)
             if r:
                 return r
-        return None
+        return _rule_fallback(query, lang)
     except RateLimitError as e:
         _wait = int(getattr(e, 'wait_seconds', 30) or 30)
         st.session_state['_last_gemini_retry_s'] = max(5, min(_wait, 60))
@@ -661,7 +685,7 @@ def _ai_answer_with_retry(query: str, context: dict, lang: str):
             r = _try_groq(_query_with_history, _ctx_to_send, lang)
             if r:
                 return r
-        return None
+        return _rule_fallback(query, lang)
     except Exception as e:
         _log(f'[Chatbot] Gemini error: {str(e)[:150]}')
 
@@ -670,7 +694,9 @@ def _ai_answer_with_retry(query: str, context: dict, lang: str):
         r = _try_groq(_query_with_history, _ctx_to_send, lang)
         if r:
             return r
-    return None
+
+    # ── Last resort: rule-based safety net ──
+    return _rule_fallback(query, lang)
 
 
 def _try_groq(query: str, context: dict, lang: str):
