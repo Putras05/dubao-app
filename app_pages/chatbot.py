@@ -2420,14 +2420,257 @@ html body [data-testid="stSidebar"] [data-testid="stTextInput"] input::-webkit-i
                 except Exception as _alt_err:
                     _log(f'[Chatbot] ticker switch failed: {_alt_err}')
 
-            response, diagram_html = _process_query(
-                _query, _runtime_ctx, ar_order,
-                _runtime_ticker, _runtime_df, _lang, _ai_ok,
-            )
+            # ── STREAMING PATH (chatbot v2 — function calling + token stream) ──
+            # Wire app state so Gemini-callable tools can read live data.
+            # Use locals() to safely access alt_* (they only exist if
+            # ticker switching above succeeded).
+            _l = locals()
+            _state_r1 = _l.get('_alt_r1', r1) if _runtime_ticker != ticker else r1
+            _state_r2 = _l.get('_alt_r2', r2) if _runtime_ticker != ticker else r2
+            _state_r3 = _l.get('_alt_r3', r3) if _runtime_ticker != ticker else r3
+            _state_m1 = _l.get('_alt_m1', m1) if _runtime_ticker != ticker else m1
+            _state_m2 = _l.get('_alt_m2', m2) if _runtime_ticker != ticker else m2
+            _state_m3 = _l.get('_alt_m3', m3) if _runtime_ticker != ticker else m3
+            try:
+                from core import chatbot_tools as _ctools
+                _ctools.set_app_state(
+                    ticker=_runtime_ticker,
+                    train_ratio=train_ratio,
+                    date_from=date_from, date_to=date_to,
+                    df=_runtime_df,
+                    r1=_state_r1, r2=_state_r2, r3=_state_r3,
+                    m1=_state_m1, m2=_state_m2, m3=_state_m3,
+                    ar_order=ar_order, lang=_lang,
+                )
+            except Exception as _state_err:
+                _log(f'[Chatbot v2] set_app_state failed: {_state_err}')
+
+            response = ''
+            diagram_html = None
+            tool_log: list = []  # list of (name, args, value)
+            inline_chart_keys: list = []
+            stream_used = False
+
+            try:
+                from core.chatbot_stream import (
+                    stream_answer, is_streaming_available,
+                )
+                stream_used = is_streaming_available()
+            except Exception:
+                stream_used = False
+
+            if stream_used:
+                # Build short history for context (excluding the current user msg)
+                _hist_for_stream = []
+                try:
+                    _conv_msgs = (ch.get_conversation(active_id) or {}).get('messages', [])
+                    # Exclude the just-added user message
+                    if _conv_msgs and _conv_msgs[-1].get('role') == 'user':
+                        _conv_msgs = _conv_msgs[:-1]
+                    for _m in _conv_msgs[-12:]:
+                        _hist_for_stream.append({
+                            'role': _m.get('role', 'user'),
+                            'content': _m.get('content', ''),
+                        })
+                except Exception:
+                    _hist_for_stream = []
+
+                # Live streaming bubble — outside the chat container, but styled
+                # like one. After saving + rerun, it will appear inside history.
+                _live_bg     = _T.get('bg_elevated', '#F8FAFC')
+                _live_border = _T.get('border_strong', '#CBD5E1')
+                _live_stripe = _T.get('accent', '#1565C0')
+                _live_fg     = _T.get('text_primary', '#0F172A')
+                _live_muted  = _T.get('text_muted', '#94A3B8')
+
+                _live_outer = st.container()
+                with _live_outer:
+                    # Inject a small CSS for the streaming cursor (idempotent —
+                    # CSS dedup at engine level)
+                    st.markdown(
+                        '<style>'
+                        '.streaming-cursor{display:inline-block;'
+                        'animation:blink-cursor 0.85s ease-in-out infinite;'
+                        'margin-left:2px;font-weight:700;opacity:0.7}'
+                        '@keyframes blink-cursor{'
+                        '0%,100%{opacity:0.2}50%{opacity:0.95}}'
+                        '.live-bubble-meta{display:flex;align-items:center;'
+                        'gap:8px;font-size:10px;font-weight:700;'
+                        'letter-spacing:1px;text-transform:uppercase;'
+                        'margin:6px 0 4px}'
+                        '</style>',
+                        unsafe_allow_html=True,
+                    )
+                    # Bubble meta-line (bot label + status) — a single self-
+                    # contained element. We skip the avatar+row flex layout for
+                    # the live bubble (it gets re-rendered properly inside the
+                    # chat container after st.rerun).
+                    st.markdown(
+                        f'<div class="live-bubble-meta">'
+                        f'<span style="width:7px;height:7px;border-radius:50%;'
+                        f'background:#10B981;display:inline-block;'
+                        f'box-shadow:0 0 6px #10B981;animation:blink-cursor 1.2s ease-in-out infinite"></span>'
+                        f'<span style="color:{_live_stripe}">{t("chatbot.bot_label")}</span>'
+                        f'<span style="color:{_live_muted};font-weight:500;'
+                        f'text-transform:none;letter-spacing:0">'
+                        f'· {"đang phản hồi…" if _lang == "VI" else "responding…"}'
+                        f'</span></div>',
+                        unsafe_allow_html=True,
+                    )
+                    _stop_placeholder = st.empty()
+                    if _stop_placeholder.button(
+                        '⏹  Dừng' if _lang == 'VI' else '⏹  Stop',
+                        key=f'stop_btn_{int(time.time()*1000)}',
+                        use_container_width=False,
+                    ):
+                        st.session_state['_chat_stop_streaming'] = True
+
+                    _tool_holder = st.container()
+                    _bubble_ph = st.empty()
+
+                buffered = ''
+                error_event = None
+                for ev in stream_answer(_query, _hist_for_stream,
+                                         _runtime_ctx, _lang):
+                    et = ev.get('type')
+                    if et == 'text':
+                        buffered += ev.get('delta', '')
+                        # Throttle re-render: every chunk is fine since SDK already chunks
+                        try:
+                            _bubble_ph.markdown(
+                                f'<div class="chat-bubble chat-bubble-bot bot-msg-container" '
+                                f'style="background:{_live_bg};color:{_live_fg};'
+                                f'border:1px solid {_live_border};'
+                                f'border-left:3px solid {_live_stripe}">'
+                                f'{_md_to_html(buffered)}'
+                                f'<span class="streaming-cursor">▌</span>'
+                                f'</div>',
+                                unsafe_allow_html=True,
+                            )
+                        except Exception:
+                            pass
+                    elif et == 'tool_call':
+                        _name = ev.get('name', '?')
+                        _args = ev.get('args', {})
+                        tool_log.append({'name': _name, 'args': _args, 'value': None})
+                        try:
+                            with _tool_holder:
+                                with st.expander(
+                                    ('🔧 Đang gọi: ' if _lang == 'VI' else '🔧 Calling: ')
+                                    + f'`{_name}({", ".join(f"{k}={v!r}" for k,v in _args.items())[:80]})`',
+                                    expanded=False,
+                                ):
+                                    st.code(repr(_args), language='python')
+                        except Exception:
+                            pass
+                    elif et == 'tool_result':
+                        _name = ev.get('name', '?')
+                        _value = ev.get('value', {})
+                        # Pair with last matching tool_call
+                        for entry in reversed(tool_log):
+                            if entry['name'] == _name and entry['value'] is None:
+                                entry['value'] = _value
+                                break
+                        else:
+                            tool_log.append({'name': _name, 'args': {}, 'value': _value})
+                        # If a chart was registered, capture for inline rendering
+                        try:
+                            if (_name == 'plot_price_chart' and isinstance(_value, dict)
+                                    and _value.get('rendered') and _value.get('chart_key')):
+                                inline_chart_keys.append(_value['chart_key'])
+                        except Exception:
+                            pass
+                    elif et == 'error':
+                        error_event = ev
+                        break
+                    elif et == 'done':
+                        break
+
+                # Finalize: collapse cursor
+                try:
+                    _bubble_ph.markdown(
+                        f'<div class="chat-bubble chat-bubble-bot bot-msg-container" '
+                        f'style="background:{_live_bg};color:{_live_fg};'
+                        f'border:1px solid {_live_border};'
+                        f'border-left:3px solid {_live_stripe}">'
+                        f'{_md_to_html(buffered) if buffered else "…"}'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+                except Exception:
+                    pass
+                try:
+                    _stop_placeholder.empty()
+                except Exception:
+                    pass
+
+                if buffered.strip():
+                    response = buffered.strip()
+                if error_event and not response:
+                    # Streaming failed — fall back to legacy synchronous path
+                    _log(f'[Chatbot v2] stream error → legacy fallback: '
+                         f'{error_event.get("message","?")[:120]}')
+                    response, diagram_html = _process_query(
+                        _query, _runtime_ctx, ar_order,
+                        _runtime_ticker, _runtime_df, _lang, _ai_ok,
+                    )
+
+                # Inline chart(s) registered by tool calls — render NOW so the
+                # user sees them immediately, then they'll re-render on next
+                # rerun via the diagram pipeline if persisted.
+                if inline_chart_keys:
+                    try:
+                        charts = st.session_state.get('_chatbot_inline_charts', {}) or {}
+                        with _live_outer:
+                            for _k in inline_chart_keys:
+                                fig = charts.get(_k)
+                                if fig is not None:
+                                    st.plotly_chart(
+                                        fig, use_container_width=True,
+                                        config={'displayModeBar': False},
+                                    )
+                    except Exception:
+                        pass
+
+            else:
+                # No streaming available → legacy synchronous path
+                response, diagram_html = _process_query(
+                    _query, _runtime_ctx, ar_order,
+                    _runtime_ticker, _runtime_df, _lang, _ai_ok,
+                )
 
             nav_target = _detect_navigation_intent(_query)
             if nav_target:
-                response = response + '\n\n' + _render_nav_hint(nav_target, _T)
+                response = (response or '') + '\n\n' + _render_nav_hint(nav_target, _T)
+
+            # Compose tool-call summary block + persist to history
+            if tool_log:
+                _tool_lines = []
+                for ent in tool_log:
+                    _name = ent.get('name', '?')
+                    _args = ent.get('args', {})
+                    _val_keys = list((ent.get('value') or {}).keys())[:5]
+                    _args_str = ', '.join(
+                        f'{k}={v!r}' for k, v in (_args or {}).items()
+                    )[:120]
+                    _tool_lines.append(
+                        f'- `{_name}({_args_str})` → '
+                        f'{", ".join(_val_keys) if _val_keys else "ok"}'
+                    )
+                _tool_md = (
+                    ('\n\n<details><summary>🔧 Đã sử dụng dữ liệu app ('
+                     if _lang == 'VI' else
+                     '\n\n<details><summary>🔧 App data used (')
+                    + str(len(tool_log))
+                    + (' tool call)</summary>\n\n' if len(tool_log) == 1
+                       else ' tool calls)</summary>\n\n')
+                    + '\n'.join(_tool_lines)
+                    + '\n\n</details>'
+                )
+                response = (response or '') + _tool_md
+
+            if not (response or '').strip():
+                response = _ai_down_msg(_lang)
 
             ch.add_message(active_id, 'assistant', response, diagram=diagram_html)
             st.rerun()

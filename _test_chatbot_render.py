@@ -30,9 +30,23 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # We do not need real streamlit for testing the rendering helpers.
 class _StubStreamlit:
     session_state = {}
+    secrets = {}
 
     def __getattr__(self, name):
-        # Any attribute access returns a no-op callable that returns None
+        # Some Streamlit symbols are decorators: cache_data, cache_resource.
+        # Return a callable that, when called either as decorator (with kwargs)
+        # OR with a function arg, returns the function unchanged.
+        if name in ('cache_data', 'cache_resource', 'experimental_memo',
+                    'experimental_singleton', 'memo', 'singleton'):
+            def _dec(*a, **kw):
+                # @st.cache_data → called as @cache_data(...) or @cache_data
+                if len(a) == 1 and callable(a[0]) and not kw:
+                    return a[0]
+                def _wrap(fn):
+                    return fn
+                return _wrap
+            return _dec
+        # Any other attribute access returns a no-op callable that returns None
         return lambda *a, **kw: None
 
 if 'streamlit' not in sys.modules:
@@ -502,6 +516,46 @@ def run() -> None:
     return (p1, t1, f1), (p2, t2, f2), (p3, t3, f3), (p4, t4, f4)
 
 
+def _smoke_pages():
+    """Import all app_pages — they must not crash even with stubbed streamlit."""
+    print("-" * 70)
+    print("  Set: All app_pages module-import smoke tests")
+    print("-" * 70)
+    failed = 0
+    # Stub heavy externals
+    if 'streamlit_option_menu' not in sys.modules:
+        m = type(sys)('streamlit_option_menu')
+        m.option_menu = lambda *a, **kw: None
+        sys.modules['streamlit_option_menu'] = m
+    if 'vnstock' not in sys.modules:
+        m = type(sys)('vnstock')
+        class _Vnstock:
+            def stock(self, **kw):
+                class S:
+                    class quote:
+                        @staticmethod
+                        def history(**kw): return None
+                return S()
+        m.Vnstock = _Vnstock
+        sys.modules['vnstock'] = m
+    page_modules = ['dashboard', 'analysis', 'history', 'signals',
+                    'portfolio', 'guide', 'splash', 'chatbot']
+    for pname in page_modules:
+        try:
+            mod_name = f'app_pages.{pname}'
+            if mod_name in sys.modules:
+                # Force fresh import to pick up edits
+                importlib.reload(sys.modules[mod_name])
+            else:
+                __import__(mod_name)
+            print(f"  [PASS] app_pages.{pname}")
+        except Exception as e:
+            failed += 1
+            print(f"  [FAIL] app_pages.{pname}: {type(e).__name__}: {e}")
+    print(f"  Page-import subtotal: {len(page_modules) - failed}/{len(page_modules)} PASS, {failed} FAIL")
+    return failed == 0
+
+
 def _smoke_imports():
     """Smoke-test that the new modules import + tool registry is well-formed.
     Runs in addition to the math-render harness; failures raise.
@@ -563,7 +617,8 @@ def _smoke_imports():
 
 if __name__ == "__main__":
     run()
-    ok = _smoke_imports()
-    if not ok:
+    ok1 = _smoke_imports()
+    ok2 = _smoke_pages()
+    if not (ok1 and ok2):
         import sys as _s
         _s.exit(1)
