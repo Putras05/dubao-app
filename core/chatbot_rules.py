@@ -323,6 +323,7 @@ _PATTERNS = [
 
     # ── AR ──────────────────────────────────────────────────────
     (r'\bar\s*\(\s*\d+\s*\)', 'ar_explain'),   # AR(1), AR(3)...
+    (r'\bar\s*\d+\b', 'ar_explain'),            # ar1, ar2, ar3 (user gõ tắt)
     (r'\bar\b.*(là gì|là sao|nghĩa|hoạt động|how|what|explain|work)', 'ar_explain'),
     (r'(là gì|là sao|nghĩa|what|explain).*\bar\b', 'ar_explain'),
     (r'autoregressive', 'ar_explain'),

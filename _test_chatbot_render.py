@@ -334,14 +334,16 @@ def _():
     assert out is None, f'Should NOT match for unrelated query, got {out!r}'
 
 
-@test('A: chatbot_stream sets tool_config AUTO + logs tool list')
+@test('A: chatbot_stream sets tool_config (AUTO/ANY) + logs tool list')
 def _():
     here = os.path.dirname(os.path.abspath(__file__))
     src = open(os.path.join(here, 'core', 'chatbot_stream.py'),
                encoding='utf-8').read()
-    assert "FunctionCallingConfig(" in src, 'AUTO mode block missing'
-    assert "mode='AUTO'" in src, "AUTO mode literal missing"
+    assert "FunctionCallingConfig(" in src, 'tool config block missing'
+    # v15: mode is now conditional 'ANY' if forced else 'AUTO'
+    assert "'AUTO'" in src and "'ANY'" in src, "AUTO/ANY conditional missing"
     assert 'Streaming with' in src and 'tools:' in src, 'tool log marker missing'
+    assert '_query_needs_data' in src, 'force-tool helper missing'
 
 
 @test('B: VI prompt forbids "không có quyền truy cập tool" hallucination')

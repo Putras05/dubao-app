@@ -143,6 +143,50 @@ def _classify_error(err: Exception) -> str:
     return 'other'
 
 
+def _query_needs_data(query: str) -> bool:
+    """True if the user clearly asks for live numbers — force a function_call.
+
+    When True, we set tool_config mode='ANY' so Gemini MUST emit a tool call
+    instead of hallucinating "I don't have access to that data".
+    Theory questions ("AR là gì?", "MAPE là gì?") return False — answered
+    from training knowledge with KaTeX, no tool needed.
+    """
+    if not query:
+        return False
+    import unicodedata
+    s = unicodedata.normalize('NFKD', query.lower())
+    s = ''.join(c for c in s if not unicodedata.combining(c))
+    s = s.replace('đ', 'd')
+
+    theory_markers = (
+        'la gi', 'la sao', 'nghia la', 'cong thuc tong quat',
+        'giai thich', 'dinh nghia', 'y nghia',
+        'what is', 'what are', 'how does', 'how do', 'explain',
+        'meaning', 'definition',
+    )
+    if any(m in s for m in theory_markers):
+        return False
+
+    data_signals = (
+        'phan tich', 'analyze', 'analysis',
+        'du bao', 'forecast', 'predict',
+        'tinh du bao', 'tinh toan', 'compute', 'calculate',
+        'gia hien tai', 'current price', 'gia dong cua',
+        'phien toi', 'next session', 'phien tiep', 'phien gan nhat',
+        'last session', 'mape cua', 'rmse cua', 'r2 cua',
+        'tom tat', 'summary', 'tong quan',
+        'so sanh ar', 'so sanh mlr', 'so sanh cart',
+    )
+    if any(sig in s for sig in data_signals):
+        return True
+
+    has_ticker = any(t in s for t in ('fpt', 'hpg', 'vnm'))
+    if has_ticker and len(s) < 50:
+        return True
+
+    return False
+
+
 def stream_answer(query: str, history: List[Dict[str, str]],
                   context: dict | None, lang: str = 'VI') -> Iterator[Dict[str, Any]]:
     """Stream a Gemini reply with native function calling.
@@ -183,6 +227,16 @@ def stream_answer(query: str, history: List[Dict[str, str]],
 
     last_err: Exception | None = None
 
+    # Detect if user is asking for live numbers → force tool call if so.
+    # mode='ANY' makes Gemini MUST emit a function_call instead of
+    # hallucinating "I don't have access to that data".
+    _force_tool = _query_needs_data(query)
+    try:
+        print(f'[chatbot_stream] force_tool={_force_tool} for query: '
+              f'{query[:60]!r}')
+    except UnicodeEncodeError:
+        pass
+
     for model_name in _MODEL_CANDIDATES:
         try:
             cfg_kwargs: Dict[str, Any] = dict(
@@ -204,7 +258,7 @@ def stream_answer(query: str, history: List[Dict[str, str]],
             try:
                 cfg_kwargs['tool_config'] = types.ToolConfig(
                     function_calling_config=types.FunctionCallingConfig(
-                        mode='AUTO',
+                        mode='ANY' if _force_tool else 'AUTO',
                     )
                 )
             except Exception:

@@ -2280,8 +2280,15 @@ html body [data-testid="stSidebar"] [data-testid="stTextInput"] input::-webkit-i
                         _last_render_ts = _now
                         try:
                             # Plain markdown → Streamlit's native KaTeX picks
-                            # up $...$ / $$...$$. Cursor appended as text.
-                            _bubble_ph.markdown((buffered or '') + '  ▌')
+                            # up $...$ / $$...$$. To avoid flicker on a half-
+                            # typed display formula, hide trailing content
+                            # after the last UNCLOSED $$ until it closes.
+                            _display = buffered
+                            if _display.count('$$') % 2 == 1:
+                                _last_dd = _display.rfind('$$')
+                                _display = (_display[:_last_dd]
+                                            + '\n\n*(đang viết công thức…)*')
+                            _bubble_ph.markdown((_display or '') + '  ▌')
                         except Exception:
                             pass
                     elif et == 'tool_call':

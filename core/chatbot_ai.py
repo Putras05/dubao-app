@@ -14,7 +14,7 @@ import streamlit as st
 # ═══════════════════════════════════════════════════════════════
 # PROMPT VERSION — bump khi đổi system prompt để invalidate cache cũ
 # ═══════════════════════════════════════════════════════════════
-PROMPT_VERSION = 'v14-2026-05-06-tool-mandatory'
+PROMPT_VERSION = 'v15-2026-05-06-final-polish'
 
 
 # ═══════════════════════════════════════════════════════════════

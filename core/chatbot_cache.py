@@ -29,7 +29,9 @@ _MEM_MAX    = 200
 # these tokens (case-insensitive, diacritic-insensitive) AND be a clear
 # theory question to be eligible for cache.
 _THEORY_TOKENS = {
-    'ar(1)', 'ar(p)', 'ar(2)', 'ar(3)', 'ar', 'mlr', 'cart',
+    'ar(1)', 'ar(p)', 'ar(2)', 'ar(3)', 'ar', 'ar1', 'ar2', 'ar3', 'ar4', 'ar5',
+    'mlr', 'mlr(1)', 'mlr(2)', 'mlr1', 'mlr2',
+    'cart', 'cart(1)', 'cart(2)', 'cart1', 'cart2',
     'mape', 'rmse', 'mae', 'r2adj', 'r²adj', 'r2', 'r²',
     'ichimoku', 'kumo', 'tenkan', 'kijun', 'chikou', 'senkou',
     'autoregressive', 'random walk', 'random-walk',
