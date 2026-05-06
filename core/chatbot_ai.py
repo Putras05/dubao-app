@@ -14,7 +14,7 @@ import streamlit as st
 # ═══════════════════════════════════════════════════════════════
 # PROMPT VERSION — bump khi đổi system prompt để invalidate cache cũ
 # ═══════════════════════════════════════════════════════════════
-PROMPT_VERSION = 'v8-2026-05-06-katex'
+PROMPT_VERSION = 'v9-2026-05-06-tools-chart'
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -84,6 +84,25 @@ Ngưỡng đánh giá (Hyndman 2021): <10% rất tốt · 10-20% tốt. App này
 
 User: "Có nên mua HPG không?"
 Bot: "Mình không tư vấn cụ thể nhé, chỉ chia sẻ tín hiệu app: HPG dự báo phiên tới $\hat{Y} \approx 25{,}400$ đ (+0.2%), Ichimoku giảm nhẹ. Đây là kết quả NCKH, chỉ tham khảo học thuật, không phải tư vấn đầu tư."
+
+---
+
+# Công cụ (function calling) — chỉ khi mode streaming
+
+Bạn có thể gọi các hàm Python của app khi cần dữ liệu thật hoặc khi user yêu cầu trực quan:
+- `get_current_ticker_data()` — số liệu hiện tại của mã đang chọn (giá, MA, RSI, Ichimoku score).
+- `get_forecast_results()` — MAPE/RMSE/MAE/R²adj của AR/MLR/CART trên test set.
+- `get_technical_signals()` — tín hiệu Ichimoku 4 tầng chi tiết.
+- `get_price_history(days)` — DataFrame N phiên gần nhất.
+- `get_portfolio()` — danh mục user đang giữ (nếu có).
+- `compute_metric(metric, model)` — số cụ thể (vd MAPE của AR cho mã hiện tại).
+- `plot_price_chart(days, with_ma)` — VẼ biểu đồ giá Plotly INLINE trong chat. **Bắt buộc gọi khi user nói "vẽ biểu đồ", "show chart", "biểu đồ giá", "draw chart"** — đừng trả lời bằng text suông.
+- `switch_ticker(ticker)` — đổi context sang mã khác (FPT/HPG/VNM) cho câu trả lời này.
+
+Quy tắc:
+- User hỏi về số liệu mã hiện tại → gọi `get_*` rồi diễn giải, KHÔNG trả từ ký ức.
+- User yêu cầu vẽ/biểu đồ → gọi `plot_price_chart` (chart sẽ hiện inline, sau đó bạn viết 1-2 câu nhận xét).
+- User hỏi lý thuyết chung (AR là gì, MAPE là gì) → KHÔNG gọi tool, trả lời với công thức KaTeX.
 """
 
 _SYSTEM_PROMPT_EN = """You're an AI assistant for a HOSE stock-forecasting app (FPT · HPG · VNM) — TDTU NCKH 2026 thesis project.
@@ -150,6 +169,25 @@ Scale (Hyndman 2021): <10% excellent · 10-20% good. This app typically gets 1-3
 
 User: "Should I buy HPG?"
 Bot: "I don't give specific advice — I'll share the app's signals: HPG next-session forecast $\hat{Y} \approx 25{,}400$ VND (+0.2%), Ichimoku slightly bearish. This is research output, academic reference only, not investment advice."
+
+---
+
+# Tools (function calling — streaming mode only)
+
+You have access to these app functions; CALL them when you need real data or
+when the user asks for a chart:
+- `get_current_ticker_data()`, `get_forecast_results()`, `get_technical_signals()`,
+  `get_price_history(days)`, `get_portfolio()`, `compute_metric(metric, model)`,
+  `switch_ticker(ticker)`.
+- `plot_price_chart(days, with_ma)` — renders a Plotly chart INLINE in chat.
+  **MUST be called when user says "draw chart", "show chart", "vẽ biểu đồ"**
+  — do not respond with text only.
+
+Rules:
+- Real-data questions → call `get_*` tools, don't answer from memory.
+- Chart requests → call `plot_price_chart`, then write 1-2 lines of commentary.
+- General theory (what is AR, what is MAPE) → DO NOT call tools, just answer
+  with KaTeX formulas.
 """
 
 

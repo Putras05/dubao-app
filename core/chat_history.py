@@ -62,8 +62,13 @@ def get_conversation(cid: str) -> dict:
     return _store().get(cid, {})
 
 
-def add_message(cid: str, role: str, content: str, diagram: str = None):
-    """Thêm message vào conversation, auto-title từ tin đầu tiên."""
+def add_message(cid: str, role: str, content: str, diagram: str = None,
+                chart_keys: list = None):
+    """Thêm message vào conversation, auto-title từ tin đầu tiên.
+
+    chart_keys: optional list of plotly figure keys stashed in
+    st.session_state['_chatbot_inline_charts']; UI re-renders them on rerun.
+    """
     convs = _store()
     if cid not in convs:
         return
@@ -74,6 +79,8 @@ def add_message(cid: str, role: str, content: str, diagram: str = None):
     }
     if diagram:
         msg['diagram'] = diagram
+    if chart_keys:
+        msg['chart_keys'] = list(chart_keys)
     conv = convs[cid]
     conv['messages'].append(msg)
     conv['updated_at'] = datetime.now().isoformat()
