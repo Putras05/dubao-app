@@ -81,19 +81,20 @@ def _to_history_contents(history: List[Dict[str, str]], lang: str):
     """Convert {'role':'user'|'assistant','content':...} → list of types.Content.
 
     The google-genai SDK expects role='user' or 'model'. We trim per-message
-    content to 1500 chars and cap the total to last 12 messages.
+    content to 800 chars and cap the total to last 6 messages — perf tuning
+    2026-05-06: smaller payload → faster TTFB on Gemini streaming.
     """
     from google.genai import types
     history = history or []
-    history = history[-12:]
+    history = history[-6:]
     out = []
     for h in history:
         role = h.get('role', 'user')
         text = (h.get('content') or '').strip()
         if not text:
             continue
-        if len(text) > 1500:
-            text = text[:1500] + '…'
+        if len(text) > 800:
+            text = text[:800] + '…'
         sdk_role = 'model' if role == 'assistant' else 'user'
         try:
             part = types.Part.from_text(text=text)
@@ -174,6 +175,11 @@ def stream_answer(query: str, history: List[Dict[str, str]],
 
     # Tools: pass Python callables — SDK auto-introspects.
     tool_callables = list(_tools.AVAILABLE_TOOLS)
+    try:
+        print(f'[chatbot_stream] Streaming with {len(tool_callables)} tools: '
+              f'{[t.__name__ for t in tool_callables]}')
+    except UnicodeEncodeError:
+        pass
 
     last_err: Exception | None = None
 
@@ -190,12 +196,41 @@ def stream_answer(query: str, history: List[Dict[str, str]],
                 cfg_kwargs['safety_settings'] = _safety_settings(types)
             except Exception:
                 pass
+
+            # Force AUTO function calling mode — without this, some Gemini
+            # models default to a "respond text-only" path and hallucinate
+            # "I don't have access to that function". AUTO lets the model
+            # decide per-turn whether to call a tool, which is what we want.
+            try:
+                cfg_kwargs['tool_config'] = types.ToolConfig(
+                    function_calling_config=types.FunctionCallingConfig(
+                        mode='AUTO',
+                    )
+                )
+            except Exception:
+                pass  # SDK without ToolConfig — AUTO is the default anyway
+
             try:
                 config = types.GenerateContentConfig(**cfg_kwargs)
-            except Exception:
-                # Older / different SDK — fall back to no tools
-                cfg_kwargs.pop('tools', None)
-                config = types.GenerateContentConfig(**cfg_kwargs)
+            except Exception as _cfg_err:
+                try:
+                    print(f'[chatbot_stream] GenerateContentConfig failed: {_cfg_err}')
+                except UnicodeEncodeError:
+                    pass
+                # Try without tool_config first (older SDK)
+                cfg_kwargs.pop('tool_config', None)
+                try:
+                    config = types.GenerateContentConfig(**cfg_kwargs)
+                except Exception:
+                    # Last resort — drop tools AND log loudly so we can spot
+                    # this in production. After this, function calling is OFF.
+                    try:
+                        print('[chatbot_stream] WARNING: tools dropped due '
+                              'to SDK incompatibility — function calling is OFF')
+                    except UnicodeEncodeError:
+                        pass
+                    cfg_kwargs.pop('tools', None)
+                    config = types.GenerateContentConfig(**cfg_kwargs)
 
             stream = client.models.generate_content_stream(
                 model=model_name,

@@ -3,7 +3,7 @@ import numpy as np
 from data.fetcher import fetch_data
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(ttl=1800, show_spinner=False)
 def run_ar(ticker: str, train_ratio: float, p: int = 1,
            date_from=None, date_to=None) -> dict:
     """

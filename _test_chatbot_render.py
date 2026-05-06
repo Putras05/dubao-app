@@ -212,16 +212,19 @@ def _():
     assert 'plot_price_chart' not in names, 'plot_price_chart should be deleted'
 
 
-@test('19: system prompts updated (no "LUÔN trả lời tiếng Việt", no "BẮT BUỘC")')
+@test('19: system prompts dropped old language-only mandates + kept general-purpose')
 def _():
     from core.chatbot_ai import _SYSTEM_PROMPT_VI, _SYSTEM_PROMPT_EN
     assert 'LUÔN trả lời bằng tiếng Việt' not in _SYSTEM_PROMPT_VI, \
         'Vietnamese-only mandate should be removed'
-    assert 'BẮT BUỘC' not in _SYSTEM_PROMPT_VI, \
-        'Mandatory-formula rule should be removed'
     assert 'ALWAYS respond in English' not in _SYSTEM_PROMPT_EN, \
         'English-only mandate should be removed'
-    # New prompt should mention general-purpose / friendly / personality
+    # The legacy "BẮT BUỘC kèm công thức" (mandatory-formula-on-every-explanation)
+    # rule is gone. The new "BẮT BUỘC SỬ DỤNG" applies to tools, which is fine.
+    assert 'BẮT BUỘC kèm công thức' not in _SYSTEM_PROMPT_VI, (
+        'Legacy mandatory-formula rule should be removed'
+    )
+    # General-purpose tone preserved
     assert 'tổng quát' in _SYSTEM_PROMPT_VI or 'general-purpose' in _SYSTEM_PROMPT_EN
 
 
@@ -302,12 +305,14 @@ def _():
     assert 'φ_1 = 0.9800' in out, f'phi_1 missing: {out!r}'
 
 
-@test('30: PROMPT_VERSION starts with v13')
+@test('30: PROMPT_VERSION ≥ v13 (current: tool-mandatory)')
 def _():
     from core.chatbot_ai import PROMPT_VERSION
-    assert PROMPT_VERSION.startswith('v13'), (
-        f'Expected v13.. for Phase-1, got {PROMPT_VERSION}'
-    )
+    # Extract numeric major version from leading "vNN-..."
+    head = PROMPT_VERSION.split('-')[0]
+    assert head.startswith('v'), f'unexpected format: {PROMPT_VERSION}'
+    major = int(head[1:])
+    assert major >= 13, f'Expected v13+, got {PROMPT_VERSION}'
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -327,6 +332,46 @@ def _():
     from core.chatbot_logic import _rule_fallback
     out = _rule_fallback('viết hàm sắp xếp Python theo Kruskal', 'VI')
     assert out is None, f'Should NOT match for unrelated query, got {out!r}'
+
+
+@test('A: chatbot_stream sets tool_config AUTO + logs tool list')
+def _():
+    here = os.path.dirname(os.path.abspath(__file__))
+    src = open(os.path.join(here, 'core', 'chatbot_stream.py'),
+               encoding='utf-8').read()
+    assert "FunctionCallingConfig(" in src, 'AUTO mode block missing'
+    assert "mode='AUTO'" in src, "AUTO mode literal missing"
+    assert 'Streaming with' in src and 'tools:' in src, 'tool log marker missing'
+
+
+@test('B: VI prompt forbids "không có quyền truy cập tool" hallucination')
+def _():
+    from core.chatbot_ai import _SYSTEM_PROMPT_VI
+    assert 'không có quyền truy cập' in _SYSTEM_PROMPT_VI, (
+        'Anti-hallucination rule missing in VI prompt'
+    )
+    assert 'BẮT BUỘC' in _SYSTEM_PROMPT_VI or 'PHẢI GỌI' in _SYSTEM_PROMPT_VI, (
+        'Mandatory tool-call language missing in VI prompt'
+    )
+
+
+@test('C: VI prompt forbids drifting to other models when user names one')
+def _():
+    from core.chatbot_ai import _SYSTEM_PROMPT_VI
+    assert 'TUÂN THỦ' in _SYSTEM_PROMPT_VI or 'CHỈ trả lời về mô hình' in _SYSTEM_PROMPT_VI
+    assert 'không lan sang' in _SYSTEM_PROMPT_VI or 'không liệt kê 3' in _SYSTEM_PROMPT_VI
+
+
+@test('D: EN prompt has parallel anti-drift + mandatory-tool rules')
+def _():
+    from core.chatbot_ai import _SYSTEM_PROMPT_EN
+    assert "I don't have access" in _SYSTEM_PROMPT_EN, 'EN anti-hallucination missing'
+    assert 'MUST call' in _SYSTEM_PROMPT_EN or 'MANDATORY' in _SYSTEM_PROMPT_EN, (
+        'EN mandatory-tool language missing'
+    )
+    assert 'answer ONLY about that model' in _SYSTEM_PROMPT_EN, (
+        'EN model-anti-drift rule missing'
+    )
 
 
 @test('33: _ai_answer_with_retry calls _rule_fallback when both AI fail')

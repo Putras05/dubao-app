@@ -15,9 +15,13 @@ from core.chatbot_groq import ask_groq, is_groq_available
 from core.chatbot_logic import (
     _log, _detect_ticker_in_query, _build_context, _detect_navigation_intent,
     _context_based_answer, _ai_down_msg, _is_data_dependent,
-    _process_query, _is_theory_query, _ai_answer_with_retry,
+    _is_theory_query, _ai_answer_with_retry,
     _try_groq, _countdown_and_retry,
 )
+# NOTE: _process_query is the legacy synchronous fallback chain (Gemini →
+# Groq → rule-based). It's only invoked when the streaming SDK is
+# unavailable OR streaming itself errors. Lazy-import inside the fallback
+# branch to avoid pulling its sub-deps at chatbot page import time.
 from core.references import detect_citation_request, get_references_by_topic, get_all_references
 from core import chat_history as ch
 from core import chatbot_cache as cache
@@ -486,6 +490,38 @@ def _katex_rerender_only(initial: bool = False):
     handles $...$ rendering automatically when content reaches the DOM
     via st.markdown(text). We only call _inject_katex_once for Prism.js."""
     return None
+
+
+# ═══════════════════════════════════════════════════════════════
+# ONE-TIME small-CSS injection (streaming-cursor, live-bubble-meta, …)
+# ═══════════════════════════════════════════════════════════════
+def _inject_chatbot_css_once():
+    """Inject the small reusable CSS rules (streaming cursor, live bubble
+    meta-line, etc.) exactly ONCE per Streamlit session.
+
+    The big themed CSS block (~700 lines, sticky sidebar / buttons /
+    bubbles) is still re-emitted on every render because it depends on
+    the live theme palette — but Streamlit dedups identical <style>
+    blocks at engine level, so the cost is just text concat. The rules
+    here are theme-independent → emit once, gate via session_state.
+    """
+    if st.session_state.get('_chatbot_css_injected'):
+        return
+    st.session_state['_chatbot_css_injected'] = True
+    st.markdown(
+        '<style>'
+        '.streaming-cursor{display:inline-block;'
+        'animation:blink-cursor 0.85s ease-in-out infinite;'
+        'margin-left:2px;font-weight:700;opacity:0.7}'
+        '@keyframes blink-cursor{'
+        '0%,100%{opacity:0.2}50%{opacity:0.95}}'
+        '.live-bubble-meta{display:flex;align-items:center;'
+        'gap:8px;font-size:10px;font-weight:700;'
+        'letter-spacing:1px;text-transform:uppercase;'
+        'margin:6px 0 4px}'
+        '</style>',
+        unsafe_allow_html=True,
+    )
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -1763,6 +1799,8 @@ html body [data-testid="stSidebar"] [data-testid="stTextInput"] input::-webkit-i
 
     # KaTeX injection — render $...$ và $$...$$ thành công thức toán thật
     _inject_katex_once()
+    # Tiny reusable CSS (streaming cursor, live bubble meta) — once/session.
+    _inject_chatbot_css_once()
 
     col_sb, col_chat = st.columns([1, 3], gap='medium')
 
@@ -1780,7 +1818,21 @@ html body [data-testid="stSidebar"] [data-testid="stTextInput"] input::-webkit-i
             st.rerun()
             return
 
-        _context = _build_context(ticker, r1, r2, r3, m1, m2, m3, df, ar_order)
+        # Session-state context cache — invalidate when ticker / p / last
+        # close changes. Keeps build_context() off the hot path on every
+        # rerender (search, sidebar click, theme toggle, etc.).
+        try:
+            _ctx_last_close = float(df['Close'].iloc[-1]) if df is not None and len(df) else 0.0
+        except Exception:
+            _ctx_last_close = 0.0
+        _ctx_sig = f'{ticker}|{ar_order}|{len(df) if df is not None else 0}|{_ctx_last_close:.2f}'
+        if st.session_state.get('_chat_ctx_sig') != _ctx_sig:
+            _context = _build_context(ticker, r1, r2, r3, m1, m2, m3, df, ar_order)
+            st.session_state['_chat_ctx_sig']    = _ctx_sig
+            st.session_state['_chat_ctx_cached'] = _context
+        else:
+            _context = st.session_state.get('_chat_ctx_cached') or \
+                       _build_context(ticker, r1, r2, r3, m1, m2, m3, df, ar_order)
 
         # Mini header
         _msg_count = len(conv.get('messages', []))
@@ -2158,7 +2210,7 @@ html body [data-testid="stSidebar"] [data-testid="stTextInput"] input::-webkit-i
                     # Exclude the just-added user message
                     if _conv_msgs and _conv_msgs[-1].get('role') == 'user':
                         _conv_msgs = _conv_msgs[:-1]
-                    for _m in _conv_msgs[-12:]:
+                    for _m in _conv_msgs[-6:]:
                         _hist_for_stream.append({
                             'role': _m.get('role', 'user'),
                             'content': _m.get('content', ''),
@@ -2176,22 +2228,10 @@ html body [data-testid="stSidebar"] [data-testid="stTextInput"] input::-webkit-i
 
                 _live_outer = st.container()
                 with _live_outer:
-                    # Inject a small CSS for the streaming cursor (idempotent —
-                    # CSS dedup at engine level)
-                    st.markdown(
-                        '<style>'
-                        '.streaming-cursor{display:inline-block;'
-                        'animation:blink-cursor 0.85s ease-in-out infinite;'
-                        'margin-left:2px;font-weight:700;opacity:0.7}'
-                        '@keyframes blink-cursor{'
-                        '0%,100%{opacity:0.2}50%{opacity:0.95}}'
-                        '.live-bubble-meta{display:flex;align-items:center;'
-                        'gap:8px;font-size:10px;font-weight:700;'
-                        'letter-spacing:1px;text-transform:uppercase;'
-                        'margin:6px 0 4px}'
-                        '</style>',
-                        unsafe_allow_html=True,
-                    )
+                    # Streaming-cursor + live-bubble-meta CSS already
+                    # injected once-per-session via _inject_chatbot_css_once()
+                    # near the top of render(). No per-stream injection.
+                    pass
                     # Bubble meta-line (bot label + status) — a single self-
                     # contained element. We skip the avatar+row flex layout for
                     # the live bubble (it gets re-rendered properly inside the
@@ -2232,9 +2272,10 @@ html body [data-testid="stSidebar"] [data-testid="stTextInput"] input::-webkit-i
                     et = ev.get('type')
                     if et == 'text':
                         buffered += ev.get('delta', '')
-                        # Throttle to ~5 fps so KaTeX has stable text to render.
+                        # Throttle to ~12 fps (80ms) — feels real-time but
+                        # spares the renderer from per-token markdown reflows.
                         _now = time.time()
-                        if _now - _last_render_ts < 0.20:
+                        if _now - _last_render_ts < 0.08:
                             continue
                         _last_render_ts = _now
                         try:
@@ -2290,6 +2331,7 @@ html body [data-testid="stSidebar"] [data-testid="stTextInput"] input::-webkit-i
                     # Streaming failed — fall back to legacy synchronous path
                     _log(f'[Chatbot v2] stream error → legacy fallback: '
                          f'{error_event.get("message","?")[:120]}')
+                    from core.chatbot_logic import _process_query
                     response, diagram_html = _process_query(
                         _query, _runtime_ctx, ar_order,
                         _runtime_ticker, _runtime_df, _lang, _ai_ok,
@@ -2297,6 +2339,7 @@ html body [data-testid="stSidebar"] [data-testid="stTextInput"] input::-webkit-i
 
             else:
                 # No streaming available → legacy synchronous path
+                from core.chatbot_logic import _process_query
                 response, diagram_html = _process_query(
                     _query, _runtime_ctx, ar_order,
                     _runtime_ticker, _runtime_df, _lang, _ai_ok,

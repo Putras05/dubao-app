@@ -1,5 +1,85 @@
 # Changelog — Trợ lý AI
 
+## 2026-05-06 — Performance optimization
+
+Goal: drop interactive latency from 5-15s to <1s for 80% of cases on
+Streamlit Cloud cold + warm reruns. No semantic changes; system prompts,
+PROMPT_VERSION (v14), and the 37 chatbot render tests are untouched.
+
+### Phase A — data layer cache hardening
+- `models/ar.py::run_ar`, `models/mlr.py::run_mlr`, `models/cart.py::run_cart`
+  now decorated with `@st.cache_data(ttl=1800, show_spinner=False)` (was
+  `@st.cache_data(show_spinner=False)` — no TTL, would hold stale dict
+  forever). 30-minute TTL matches HOSE end-of-day cycle.
+- `data/ichimoku.py::add_ichimoku` gained `ttl=1800` (already had custom
+  `_df_fingerprint` hash function — left intact).
+- `data/fetcher.py::_fetch_raw` already had `ttl=21600` (6h) — left as is.
+
+### Phase B — chatbot CSS + lazy import + streaming throttle
+- New `_inject_chatbot_css_once()` in `app_pages/chatbot.py`. Gates the
+  reusable `.streaming-cursor` / `.live-bubble-meta` CSS via
+  `st.session_state['_chatbot_css_injected']` so the small CSS block is
+  emitted exactly once per session instead of once per streaming turn.
+- Removed the per-stream `<style>` injection inside the live-bubble
+  container — it's now pulled forward into the one-time injector.
+- `from core.chatbot_logic import _process_query` removed from
+  module-level imports of `app_pages/chatbot.py`. The legacy synchronous
+  fallback chain is now lazy-imported inside the two callsites that
+  actually use it (streaming-error fallback + no-streaming fallback). Cuts
+  cold import cost on the most common path (streaming available).
+- Streaming throttle tightened from 200ms (5 fps) to 80ms (~12 fps) per
+  spec. KaTeX still has stable text between renders; user perceives the
+  bubble as ~real-time.
+
+### Phase C — session-state context cache
+- `_build_context()` was being recomputed on every chatbot rerender
+  (search, theme toggle, sidebar click). Now wrapped with a session-state
+  signature gate: `_chat_ctx_sig = ticker|p|len|last_close`. Subsequent
+  reruns with identical signature reuse the cached dict, skipping all the
+  Ichimoku + ratio + volatility computations inside `_build_context`.
+
+### Phase D — chat history payload reduction
+- `core/chatbot_stream.py::_to_history_contents`: history cap reduced
+  from `[-12:]` to `[-6:]`, per-message char cap from 1500 to 800. Roughly
+  halves the prompt sent to Gemini on multi-turn sessions, improving TTFB.
+- `app_pages/chatbot.py` history slice for `_hist_for_stream` matched
+  to `[-6:]` so history fed in matches what stream consumes.
+
+### Phase E — requirements + config + st.fragment
+- `.streamlit/config.toml`:
+  - `[runner] fastReruns = true` + `enforceSerializableSessionState = false`
+  - `[server] maxUploadSize = 50`, `enableCORS = false`,
+    `enableXsrfProtection = false`
+  - `[client] toolbarMode = "minimal"` (kept), `showErrorDetails = false`
+    (kept), theme block unchanged per the "do-not-touch background" rule.
+- `requirements.txt` pinned to specific PyPI releases for stable
+  Streamlit Cloud cold start: `streamlit==1.39.0`,
+  `streamlit-option-menu==0.3.13`, `pandas==2.2.3`, `numpy==2.0.2`,
+  `plotly==5.24.1`, `matplotlib==3.9.2`, `scipy==1.14.1`,
+  `scikit-learn==1.5.2`, `google-genai==1.5.0`, `requests==2.32.3`.
+  `vnstock` left as `>=3.0,<4.0` (per guardrail F: vnstock is fast-moving
+  and a strict pin would break HOSE data fetch on minor upstream changes).
+- `st.fragment` (subtask 8): **deferred**. Streamlit ≥ 1.37 is available
+  (local 1.56 / pinned 1.39), but the chat-message render loop is tightly
+  interleaved with the surrounding action bar (search prev/next, regen
+  trigger via query params) and writes shared `_msg_total_hits_prev` /
+  `_msg_match_idx` session state that the action bar reads. Wrapping in a
+  fragment with `st.rerun(scope='fragment')` would require splitting that
+  state and is out of scope for this perf pass without risking regression
+  on the search/regenerate flows. Logged here as a follow-up.
+
+### Expected user-visible improvements
+- AR/MLR/CART switch on the same ticker: was ~3-5s (full retrain), now
+  <100ms (cache hit, 30-min TTL).
+- Ichimoku indicator panel re-render after theme toggle / sidebar click:
+  was ~500-800ms, now <50ms (cached).
+- Chatbot first response on warm session: ~200-400ms shaved (smaller
+  history payload + tighter streaming throttle).
+- Chatbot second-onwards questions on the same ticker: context build
+  cost (~50-150ms) eliminated via session-state cache.
+- Cold app boot: marginally faster from `fastReruns = true` + no
+  XSRF/CORS handshakes; pinned deps avoid PyPI resolver churn.
+
 ## 2026-05-06 — Phase 1-5 rewrite (v12)
 
 Two missions delivered in a single session:

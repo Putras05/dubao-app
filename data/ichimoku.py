@@ -82,7 +82,8 @@ _rolling_midpoint = _donchian_mid
 #  HÀM CHÍNH
 # ═════════════════════════════════════════════════════════════════════════
 
-@st.cache_data(show_spinner=False, hash_funcs={pd.DataFrame: _df_fingerprint})
+@st.cache_data(ttl=1800, show_spinner=False,
+               hash_funcs={pd.DataFrame: _df_fingerprint})
 def add_ichimoku(df: pd.DataFrame,
                  tenkan_n: int = TENKAN_N,
                  kijun_n:  int = KIJUN_N,
