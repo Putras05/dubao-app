@@ -154,7 +154,12 @@ def _highlight_in_html(html_content: str, query: str, accent: str = '#FBBF24',
 # STDLIB MARKDOWN → HTML CONVERTER
 # ═══════════════════════════════════════════════════════════════
 def _inline_md(text: str) -> str:
-    """Convert inline markdown (**bold**, *italic*, `code`) to HTML. Input is already html-escaped."""
+    """Convert inline markdown (**bold**, *italic*, `code`) to HTML. Input is already html-escaped.
+
+    Note: backtick spans are pre-extracted in _md_to_html (so math-y inline code
+    can be routed through the math renderer). The legacy backtick→<code> rule
+    here remains as a safety net for callers that don't pre-extract.
+    """
     import re
     text = re.sub(r'\*\*\*(.+?)\*\*\*', r'<strong><em>\1</em></strong>', text)
     text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
@@ -268,12 +273,27 @@ def _latex_to_pretty(s: str) -> str:
     for pat, repl in sorted(_OP_MAP.items(), key=lambda x: -len(x[0])):
         s = _re.sub(pat, repl, s)
     # Subscripts / superscripts → use HTML <sub>/<sup> via placeholder tokens
+    # _{multi}, ^{multi} take whole brace content
     s = _re.sub(r'_\{([^{}]+)\}', lambda m: f'{_SUB_O}{m.group(1)}{_SUB_C}', s)
-    s = _re.sub(r'_([0-9a-zA-Z])', lambda m: f'{_SUB_O}{m.group(1)}{_SUB_C}', s)
     s = _re.sub(r'\^\{([^{}]+)\}', lambda m: f'{_SUP_O}{m.group(1)}{_SUP_C}', s)
+    # Multi-char alpha subscripts like y_actual, y_pred, t_max — match 1+
+    # alphanumerics. Requires a preceding identifier char so we don't eat
+    # leading underscores in code/snake_case identifiers.
+    s = _re.sub(r'(?<=[A-Za-z0-9])_([A-Za-z][A-Za-z0-9]+)',
+                lambda m: f'{_SUB_O}{m.group(1)}{_SUB_C}', s)
+    # Multi-digit numeric subscripts: MA_20, MA_5, x_12 → digits become subscript
+    s = _re.sub(r'(?<=[A-Za-z])_(\d+)',
+                lambda m: f'{_SUB_O}{m.group(1)}{_SUB_C}', s)
+    # Single-char fallback (covers Y_t, x_i, etc.)
+    s = _re.sub(r'_([0-9a-zA-Z])', lambda m: f'{_SUB_O}{m.group(1)}{_SUB_C}', s)
+    # Multi-digit superscript: x^12, y^10 → digits become superscript
+    s = _re.sub(r'(?<=[A-Za-z0-9])\^(\d+)',
+                lambda m: f'{_SUP_O}{m.group(1)}{_SUP_C}', s)
     s = _re.sub(r'\^([0-9a-zA-Z])', lambda m: f'{_SUP_O}{m.group(1)}{_SUP_C}', s)
     # Cleanup leftover braces / backslashes
     s = s.replace('\\\\', '\n')      # \\ row separator
+    # Escaped LaTeX punctuation: \% → %, \$ → $, \& → &, \_ → _, \# → #
+    s = _re.sub(r'\\([%$&_#])', r'\1', s)
     s = _re.sub(r'\\([a-zA-Z]+)', r'\1', s)  # strip remaining \cmd → cmd
     s = s.replace('{', '').replace('}', '')
     return s
@@ -288,31 +308,179 @@ def _restore_subsup(escaped: str) -> str:
             .replace(_SUP_C, '</sup>'))
 
 
+_CODE_KEYWORDS = (
+    'def ', 'function ', 'return ', 'import ', 'from ',
+    '=>', '::', '->', 'print(', 'console.log',
+    'public ', 'private ', 'class ', 'struct ', 'lambda ',
+    'SELECT ', 'INSERT ', 'UPDATE ', 'DELETE ', 'WHERE ',
+    'var ', 'let ', 'const ', 'async ', 'await ',
+    '#include', 'package ', 'namespace ',
+)
+
+# Strong math markers — presence of any ⇒ definitely math
+_STRONG_MATH_MARKERS = (
+    # LaTeX commands
+    '\\hat', '\\bar', '\\tilde', '\\beta', '\\alpha', '\\phi', '\\sigma',
+    '\\sum', '\\sqrt', '\\frac', '\\text', '\\mathrm', '\\Sigma', '\\cdot',
+    '\\approx', '\\leq', '\\geq', '\\neq', '\\partial', '\\infty', '\\to',
+    '\\left', '\\right',
+    # Unicode math symbols
+    'Σ', '∑', '∫', 'Π', '∏', '√', '∞', '∂', '∇',
+    '·', '×', '÷', '±', '∓', '≈', '≡', '≠', '≤', '≥', '≪', '≫',
+    '∈', '∉', '⊂', '⊃', '∪', '∩', '∅', '∀', '∃',
+    '⇒', '⇐', '→', '←',
+    # Greek
+    'α', 'β', 'γ', 'δ', 'ε', 'ζ', 'η', 'θ', 'λ', 'μ', 'ν', 'ξ',
+    'π', 'ρ', 'σ', 'τ', 'φ', 'χ', 'ψ', 'ω',
+    'Α', 'Β', 'Γ', 'Δ', 'Λ', 'Φ', 'Ψ', 'Ω',
+    # Hat'd letters used in stats
+    'Ŷ', 'ŷ', 'X̂', 'x̂', 'β̂',
+    # LaTeX-ish syntax fragments (curly-brace ones are unambiguous;
+    # single-letter `_t`/`_i`/`_p` are too greedy on snake_case identifiers
+    # like `forecast_price` and were removed in iteration 10).
+    '_{', '^{',
+)
+
+# Domain-specific names — strong signals for stats/forecast formulas.
+_DOMAIN_MATH_TOKENS = (
+    'MAPE', 'RMSE', 'MAE', 'MSE', 'R²adj', 'R^2', 'R²', 'AR(1)', 'AR(p)',
+    'sqrt(', 'mean(', 'sum(', 'sigma(', 'phi_', 'beta_',
+)
+
+
 def _looks_like_math(text: str) -> bool:
     """Heuristic: does this look like a math formula? Used to upgrade fenced
-    code blocks to math display when AI puts formulas in ``` blocks.
+    code blocks (or paragraphs) to math display when content is a formula.
     """
     if not text:
         return False
-    indicators = (
-        '\\hat', '\\bar', '\\beta', '\\phi', '\\sigma', '\\sum', '\\sqrt',
-        '\\frac', '\\text', '\\alpha', '\\Sigma', '\\cdot', '\\approx',
-        'φ', 'β', 'σ', 'Σ', 'Ŷ', 'ŷ', '·', '≈', '≤', '≥', '√',
-        'Σ_', '_{', '^{', '\\\\',
-    )
-    if any(ind in text for ind in indicators):
-        return True
-    # Math-like equations: short line with = and operators
     short = text.strip()
-    if len(short) < 200 and '=' in short and any(op in short for op in ['+', '-', '·', '*', '/', '^']):
-        # Avoid false positives for code (functions, brackets-with-args)
-        if not any(kw in short for kw in ['def ', 'function ', 'return ', 'import ', 'from ', '=>', '::', '->', 'print(']):
+    if not short:
+        return False
+
+    # 0. If any code keyword is present → it's code, not math.
+    if any(kw in short for kw in _CODE_KEYWORDS):
+        return False
+
+    # 1. Strong markers (LaTeX/Greek/Unicode operators) → definitely math
+    if any(ind in short for ind in _STRONG_MATH_MARKERS):
+        return True
+
+    # 2. Domain math tokens (MAPE/RMSE/R²adj/sqrt(...)) ⇒ math when also paired with
+    #    an operator or `=`.
+    if any(tok in short for tok in _DOMAIN_MATH_TOKENS):
+        if '=' in short or any(op in short for op in ('·', '×', '/', '·', '·', 'Σ', '√', '+', '-')):
             return True
+
+    # 3. Math-like equation: short, with = and arithmetic operators
+    if len(short) < 240 and '=' in short and any(op in short for op in ['+', '-', '·', '*', '/', '^', '|']):
+        return True
+
     return False
 
 
+_DOMAIN_FORMULA_NAMES = (
+    'MAPE', 'RMSE', 'MAE', 'MSE', 'R²adj', 'R^2_adj', 'R²', 'R^2',
+    'AR(1)', 'AR(p)', 'MLR', 'CART',
+)
+
+
+def _line_looks_like_math(line: str) -> bool:
+    """Stricter heuristic for AUTO-PROMOTING a plain paragraph line to math.
+
+    Differs from _looks_like_math (which only runs on fenced-block content):
+    we need stronger signals here to avoid false-positives on prose. Rules:
+
+      A. Line MUST contain '=' (or a LaTeX function command).
+      B. The LHS of the first '=' is short (≤6 tokens) AND is a known
+         formula name (MAPE/RMSE/Ŷ/AR(1)/etc.) OR a single-token math symbol
+         like β, σ, Y, x. This filters out prose lines like
+         "Trong app này, AR(1) trên FPT có MAPE = 1.2%".
+      C. The RHS contains at least one strong math operator/marker.
+    """
+    if not line:
+        return False
+    s = line.strip()
+    if len(s) < 6 or len(s) > 400:
+        return False
+    if any(kw in s for kw in _CODE_KEYWORDS):
+        return False
+
+    # Strip leading/trailing emphasis wrappers BEFORE testing
+    bare = _strip_emphasis_wrap(s)
+
+    has_latex_cmd = any(c in bare for c in ('\\frac', '\\sum', '\\sqrt', '\\hat', '\\bar', '\\tilde'))
+    if has_latex_cmd:
+        # LaTeX commands are unambiguous — accept.
+        return True
+
+    if '=' not in bare:
+        return False
+
+    # Split on first '='
+    lhs, rhs = bare.split('=', 1)
+    lhs = lhs.strip()
+    rhs = rhs.strip()
+    if not lhs or not rhs:
+        return False
+
+    # LHS must be short. Real formulas: "MAPE", "RMSE", "Ŷ_{t+1}", "R²adj".
+    # Prose: "Trong app này, AR(1) trên FPT có MAPE" (long, multi-word).
+    lhs_tokens = [tok for tok in lhs.replace(' ', ' ').split() if tok]
+    if len(lhs_tokens) > 4:
+        return False
+    if len(lhs) > 32:  # too long → prose
+        return False
+
+    # LHS must match a formula-name pattern: known domain name OR
+    # single math identifier (≤8 chars of letters/digits/sub-sup symbols).
+    lhs_is_formula_name = (
+        any(name in lhs for name in _DOMAIN_FORMULA_NAMES)
+        or _looks_like_identifier(lhs)
+    )
+    if not lhs_is_formula_name:
+        return False
+
+    # RHS must show real mathy content: operator-or-Greek/Σ/√/etc. OR a
+    # numeric / parenthesised expression (length-bounded). Pure scalars
+    # like "1.2%" or "0.99" alone are NOT a formula.
+    rhs_has_marker = any(ind in rhs for ind in _STRONG_MATH_MARKERS)
+    _arith = ('+', '*', '/', '·', 'Σ', '√', '|', '(')
+    rhs_arith_ops = sum(rhs.count(op) for op in _arith)
+    rhs_minus_ops = rhs.count(' - ') + rhs.count(' − ')
+    if not rhs_has_marker and (rhs_arith_ops + rhs_minus_ops) < 2:
+        return False
+
+    return True
+
+
+def _looks_like_identifier(token: str) -> bool:
+    """True if `token` (already a stripped LHS) is a single math identifier
+    such as ``Ŷ``, ``β̂``, ``Y_t``, ``x``, ``R²``."""
+    import re as _re
+    if not token or len(token) > 16:
+        return False
+    # Allow letters (incl. Greek, hat'd letters), digits, underscore, ², ³,
+    # subscript braces, prime characters.
+    return bool(_re.fullmatch(r"[A-Za-zͰ-Ͽ²³Ŷŷβ̂α-ωΑ-Ω0-9_\^\{\}'·\.\-\+]+", token))
+
+
+def _strip_emphasis_wrap(s: str) -> str:
+    """Strip outermost ** … ** or * … * wrappers (used before math detection)."""
+    s = s.strip()
+    while s.startswith('**') and s.endswith('**') and len(s) > 4:
+        s = s[2:-2].strip()
+    while s.startswith('*') and s.endswith('*') and len(s) > 2 and not s.startswith('**'):
+        s = s[1:-1].strip()
+    return s
+
+
 def _math_display_html(content: str) -> str:
-    """Render math content as a styled display block (italic serif, centered)."""
+    """Render math content as a styled display block (italic serif, centered).
+
+    Uses overflow-x:auto + white-space:pre so very wide formulas scroll
+    horizontally instead of breaking the formula mid-operator.
+    """
     pretty = _latex_to_pretty(content)
     import html as _hlib
     body = _restore_subsup(_hlib.escape(pretty))
@@ -323,7 +491,7 @@ def _math_display_html(content: str) -> str:
         'background:rgba(96,165,250,0.06);'
         'border-left:3px solid rgba(96,165,250,0.55);'
         'border-radius:4px;overflow-x:auto;letter-spacing:0.015em;'
-        f'white-space:pre-wrap">{body}</div>'
+        f'white-space:pre">{body}</div>'
     )
 
 
@@ -378,6 +546,44 @@ def _md_to_html(text: str) -> str:
         math_inline.append(m.group(1))
         return f'\x00MATHINLINE{len(math_inline)-1}\x00'
     text = re.sub(r'(?<!\\)\$([^\s$][^$\n]*?[^\s$]|\S)\$', _stash_math_inline, text)
+
+    # ── Pre-process: extract `inline backtick code` BEFORE escape so we can
+    # route math-y inline spans through the math renderer. Keeps real inline
+    # code (like `pd.DataFrame`) escaping intact.
+    backtick_spans = []
+    def _stash_backtick(m):
+        backtick_spans.append(m.group(1))
+        return f'\x00BACKTICK{len(backtick_spans)-1}\x00'
+    text = re.sub(r'`([^`\n]+)`', _stash_backtick, text)
+
+    # ── Pre-process: auto-promote whole paragraph lines that look like math.
+    # We detect lines (post fenced/block extraction) where the entire content is
+    # a formula (possibly wrapped in **bold**) and stash them for display math.
+    auto_math = []
+    def _maybe_promote(line: str) -> str:
+        # Skip lines that already became placeholders for code/math
+        if '\x00' in line:
+            return line
+        bare = _strip_emphasis_wrap(line)
+        # Heuristics: line is essentially the formula. We allow a short prefix
+        # like "Công thức: " before the formula. Split on first ': ' or '— ' if
+        # the math part still detects.
+        candidates = [bare]
+        for sep in (': ', '— ', '- '):
+            if sep in bare:
+                left, right = bare.split(sep, 1)
+                candidates.append(right.strip())
+        for cand in candidates:
+            if _line_looks_like_math(cand):
+                auto_math.append(cand)
+                # Preserve the optional prefix text before the formula
+                if cand != bare and bare.endswith(cand):
+                    prefix = bare[: len(bare) - len(cand)]
+                    return f'{prefix}\x00AUTOMATH{len(auto_math)-1}\x00'
+                return f'\x00AUTOMATH{len(auto_math)-1}\x00'
+        return line
+
+    text = '\n'.join(_maybe_promote(ln) for ln in text.split('\n'))
 
     lines = text.split('\n')
     out = []
@@ -462,8 +668,9 @@ def _md_to_html(text: str) -> str:
             if in_ol: out.append('</ol>'); in_ol = False; ol_counter = 1
             out.append('')
 
-        # Block placeholder (fenced code / block math) — output raw, no <p>
-        elif re.match(r'^\s*\x00(CODEBLOCK|MATHBLOCK)\d+\x00\s*$', raw):
+        # Block placeholder (fenced code / block math / auto-promoted math)
+        # — output raw, no <p>
+        elif re.match(r'^\s*\x00(CODEBLOCK|MATHBLOCK|AUTOMATH)\d+\x00\s*$', raw):
             if in_ul: out.append('</ul>'); in_ul = False
             if in_ol: out.append('</ol>'); in_ol = False; ol_counter = 1
             out.append(raw.strip())
@@ -504,6 +711,25 @@ def _md_to_html(text: str) -> str:
     # ── Post-process: restore $...$ inline math ──
     for idx, math in enumerate(math_inline):
         html_str = html_str.replace(f'\x00MATHINLINE{idx}\x00', _math_inline_html(math))
+
+    # ── Post-process: restore auto-promoted paragraph math (display style) ──
+    for idx, math in enumerate(auto_math):
+        html_str = html_str.replace(f'\x00AUTOMATH{idx}\x00', _math_display_html(math))
+
+    # ── Post-process: restore inline backtick spans — route math-y ones to
+    # _math_inline_html, otherwise to a real <code> span. Done LAST so that
+    # other restoration steps can't disturb these placeholders.
+    for idx, span in enumerate(backtick_spans):
+        if _looks_like_math(span):
+            rendered = _math_inline_html(span)
+        else:
+            rendered = (
+                '<code style="background:rgba(100,116,139,.10);padding:1px 5px;'
+                'border-radius:3px;font-family:ui-monospace,SFMono-Regular,Menlo,'
+                'Consolas,monospace;font-size:.92em">'
+                f'{_hlib.escape(span)}</code>'
+            )
+        html_str = html_str.replace(f'\x00BACKTICK{idx}\x00', rendered)
 
     return html_str
 
