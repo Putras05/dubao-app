@@ -323,8 +323,8 @@ _PATTERNS = [
 
     # ── AR ──────────────────────────────────────────────────────
     (r'\bar\s*\(\s*\d+\s*\)', 'ar_explain'),   # AR(1), AR(3)...
-    (r'\bar\b.*(là gì|nghĩa|hoạt động|how|what|explain|work)', 'ar_explain'),
-    (r'(là gì|nghĩa|what|explain).*\bar\b', 'ar_explain'),
+    (r'\bar\b.*(là gì|là sao|nghĩa|hoạt động|how|what|explain|work)', 'ar_explain'),
+    (r'(là gì|là sao|nghĩa|what|explain).*\bar\b', 'ar_explain'),
     (r'autoregressive', 'ar_explain'),
     (r'(mô hình|model)\s+(tự hồi quy)', 'ar_explain'),
 
@@ -381,22 +381,38 @@ _PATTERNS = [
     (r'(giới thiệu|about|info|là gì|what is|what.s)\s.*\bvnm\b', 'vnm_info'),
     (r'\bvinamilk\b', 'vnm_info'),
 
-    # ── FALLBACK: "phân tích <ticker>" — match ticker_info ─────
-    (r'(phân tích|analyze|analysis)\s+(mã\s+)?fpt', 'fpt_info'),
-    (r'(phân tích|analyze|analysis)\s+(mã\s+)?hpg', 'hpg_info'),
-    (r'(phân tích|analyze|analysis)\s+(mã\s+)?vnm', 'vnm_info'),
-    (r'(phân tích|analyze|analysis)\s+(mã\s+)?\w+\s*(fpt|hpg|vnm)', 'model_compare'),
+    # NOTE: "phân tích FPT/HPG/VNM" KHÔNG còn match rule cứng — để AI dùng
+    # context (giá thật, MAPE, dự báo) đưa ra phân tích động thay vì
+    # company-info tĩnh. User muốn xem company info → "FPT là gì" / "FPT info".
+]
+
+
+def _strip_diacritics(s: str) -> str:
+    """Strip dấu tiếng Việt + đ/Đ → cho phép user gõ không dấu cũng match.
+    Ví dụ: 'là gì' → 'la gi', 'chọn' → 'chon'.
+    """
+    import unicodedata
+    s = s.replace('đ', 'd').replace('Đ', 'D')
+    return ''.join(c for c in unicodedata.normalize('NFKD', s)
+                   if not unicodedata.combining(c))
+
+
+# Pre-compile diacritic-stripped patterns (1 lần lúc import) → match nhanh + accent-insensitive
+_PATTERNS_STRIPPED = [
+    (re.compile(_strip_diacritics(p)), intent) for p, intent in _PATTERNS
 ]
 
 
 def match_intent(query: str):
     """Match query → intent key hoặc None.
 
-    FIX: dùng unicode-safe lowercase + strip dấu câu trailing.
+    Accent-insensitive: 'la gi' khớp pattern 'là gì'.
     """
-    q = query.lower().strip().rstrip('?!.,;:')
-    for pattern, intent in _PATTERNS:
-        if re.search(pattern, q):
+    if not query:
+        return None
+    q = _strip_diacritics(query.lower().strip().rstrip('?!.,;:'))
+    for pat, intent in _PATTERNS_STRIPPED:
+        if pat.search(q):
             return intent
     return None
 
