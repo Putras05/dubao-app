@@ -187,244 +187,42 @@ def _strip_legacy_html(text: str) -> str:
     return text.strip()
 
 
-# Use (?![a-zA-Z]) instead of \b — \b doesn't trigger before `_` (word char in regex)
-_NB = r'(?![a-zA-Z])'
+# ═══════════════════════════════════════════════════════════════
+# DELETED in Phase 1 (2026-05-06):
+#   _NB / _GREEK_MAP / _OP_MAP / _SUB_O / _SUB_C / _SUP_O / _SUP_C
+#   _latex_to_pretty / _restore_subsup
+#   _CODE_KEYWORDS / _STRONG_MATH_MARKERS / _DOMAIN_MATH_TOKENS
+#   _looks_like_math / _DOMAIN_FORMULA_NAMES
+#   _line_looks_like_math / _looks_like_identifier / _strip_emphasis_wrap
+#   _math_display_html / _math_inline_html
+# Reason: replaced fake-Unicode pretty-print math with REAL KaTeX
+# rendering via Streamlit's native st.markdown. See PLAN.md / CHANGELOG.md.
+# ═══════════════════════════════════════════════════════════════
 
-_GREEK_MAP = {
-    r'\\alpha' + _NB: 'α', r'\\beta' + _NB: 'β', r'\\gamma' + _NB: 'γ',
-    r'\\delta' + _NB: 'δ', r'\\epsilon' + _NB: 'ε', r'\\varepsilon' + _NB: 'ε',
-    r'\\zeta' + _NB: 'ζ', r'\\eta' + _NB: 'η', r'\\theta' + _NB: 'θ',
-    r'\\iota' + _NB: 'ι', r'\\kappa' + _NB: 'κ', r'\\lambda' + _NB: 'λ',
-    r'\\mu' + _NB: 'μ', r'\\nu' + _NB: 'ν', r'\\xi' + _NB: 'ξ',
-    r'\\omicron' + _NB: 'ο', r'\\pi' + _NB: 'π', r'\\rho' + _NB: 'ρ',
-    r'\\sigma' + _NB: 'σ', r'\\tau' + _NB: 'τ', r'\\upsilon' + _NB: 'υ',
-    r'\\phi' + _NB: 'φ', r'\\chi' + _NB: 'χ', r'\\psi' + _NB: 'ψ', r'\\omega' + _NB: 'ω',
-    r'\\Alpha' + _NB: 'Α', r'\\Beta' + _NB: 'Β', r'\\Gamma' + _NB: 'Γ',
-    r'\\Delta' + _NB: 'Δ', r'\\Epsilon' + _NB: 'Ε', r'\\Zeta' + _NB: 'Ζ',
-    r'\\Eta' + _NB: 'Η', r'\\Theta' + _NB: 'Θ', r'\\Iota' + _NB: 'Ι',
-    r'\\Kappa' + _NB: 'Κ', r'\\Lambda' + _NB: 'Λ', r'\\Mu' + _NB: 'Μ',
-    r'\\Nu' + _NB: 'Ν', r'\\Xi' + _NB: 'Ξ', r'\\Omicron' + _NB: 'Ο',
-    r'\\Pi' + _NB: 'Π', r'\\Rho' + _NB: 'Ρ', r'\\Sigma' + _NB: 'Σ',
-    r'\\Tau' + _NB: 'Τ', r'\\Upsilon' + _NB: 'Υ', r'\\Phi' + _NB: 'Φ',
-    r'\\Chi' + _NB: 'Χ', r'\\Psi' + _NB: 'Ψ', r'\\Omega' + _NB: 'Ω',
-}
+# [Deleted in Phase 1: _GREEK_MAP block]
 
-_OP_MAP = {
-    r'\\sum' + _NB: 'Σ', r'\\prod' + _NB: 'Π', r'\\int' + _NB: '∫',
-    r'\\cdot' + _NB: '·', r'\\times' + _NB: '×', r'\\div' + _NB: '÷',
-    r'\\pm' + _NB: '±', r'\\mp' + _NB: '∓',
-    r'\\approx' + _NB: '≈', r'\\equiv' + _NB: '≡', r'\\sim' + _NB: '∼',
-    r'\\leq' + _NB: '≤', r'\\geq' + _NB: '≥', r'\\neq' + _NB: '≠',
-    r'\\ne' + _NB: '≠', r'\\le' + _NB: '≤', r'\\ge' + _NB: '≥',
-    r'\\ll' + _NB: '≪', r'\\gg' + _NB: '≫',
-    r'\\to' + _NB: '→', r'\\rightarrow' + _NB: '→', r'\\leftarrow' + _NB: '←',
-    r'\\Rightarrow' + _NB: '⇒', r'\\Leftarrow' + _NB: '⇐',
-    r'\\infty' + _NB: '∞', r'\\partial' + _NB: '∂', r'\\nabla' + _NB: '∇',
-    r'\\in' + _NB: '∈', r'\\notin' + _NB: '∉',
-    r'\\subset' + _NB: '⊂', r'\\supset' + _NB: '⊃',
-    r'\\cup' + _NB: '∪', r'\\cap' + _NB: '∩', r'\\emptyset' + _NB: '∅',
-    r'\\forall' + _NB: '∀', r'\\exists' + _NB: '∃',
-    r'\\left' + _NB: '', r'\\right' + _NB: '',
-    r'\\,': ' ', r'\\;': ' ', r'\\!': '', r'\\:': ' ',
-    r'\\quad' + _NB: '   ', r'\\qquad' + _NB: '      ',
-    r'\\dots' + _NB: '…', r'\\cdots' + _NB: '⋯', r'\\ldots' + _NB: '…',
-    r'\\vdots' + _NB: '⋮', r'\\ddots' + _NB: '⋱',
-}
+# [Deleted in Phase 1: _OP_MAP block]
 
-# Placeholders for sub/sup tags — single control bytes so regex won't false-match.
-# Underscores and letters in placeholders caused infinite-recursion-like bugs
-# where the `_X` subscript regex matched the closing `_SUB` placeholder text.
-_SUB_O = '\x02'
-_SUB_C = '\x03'
-_SUP_O = '\x04'
-_SUP_C = '\x05'
+# [Deleted in Phase 1: _SUB_*/_SUP_* / _latex_to_pretty / _restore_subsup]
 
 
-def _latex_to_pretty(s: str) -> str:
-    """Convert simple LaTeX → Unicode + sub/sup placeholders for math display.
+# [Deleted in Phase 1: _CODE_KEYWORDS]
 
-    Handles: \\hat, \\bar, \\tilde, \\sqrt, \\frac, Greek (lower+upper),
-    operators (sum, prod, cdot, approx, leq, geq, etc.), _{}, ^{}, \\text,
-    \\mathrm, multi-char sub/sup, basic LaTeX cleanup.
-
-    Output may contain placeholder tokens (\\x01SUB\\x01) that callers must
-    replace with real <sub>/<sup> tags AFTER html.escape.
-    """
-    import re as _re
-    if not s:
-        return ''
-    # Functions with braces (handle nested-friendly first)
-    s = _re.sub(r'\\hat\s*\{([^{}]*)\}', lambda m: m.group(1) + '̂', s)
-    s = _re.sub(r'\\hat\s+(\w)', lambda m: m.group(1) + '̂', s)
-    s = _re.sub(r'\\bar\s*\{([^{}]*)\}', lambda m: m.group(1) + '̄', s)
-    s = _re.sub(r'\\bar\s+(\w)', lambda m: m.group(1) + '̄', s)
-    s = _re.sub(r'\\tilde\s*\{([^{}]*)\}', lambda m: m.group(1) + '̃', s)
-    s = _re.sub(r'\\sqrt\s*\{([^{}]*)\}', r'√(\1)', s)
-    s = _re.sub(r'\\frac\s*\{([^{}]*)\}\s*\{([^{}]*)\}', r'(\1)⁄(\2)', s)
-    s = _re.sub(r'\\text\s*\{([^{}]*)\}', r'\1', s)
-    s = _re.sub(r'\\mathrm\s*\{([^{}]*)\}', r'\1', s)
-    s = _re.sub(r'\\operatorname\s*\{([^{}]*)\}', r'\1', s)
-    s = _re.sub(r'\\mathbb\s*\{([^{}]*)\}', r'\1', s)
-    # Greek + operators (apply LONGEST patterns first → \\varepsilon before \\epsilon
-    # is already set by \\varepsilon mapping — Python dict ordered, but safer to
-    # iterate in pattern-length-descending order)
-    for pat, repl in sorted(_GREEK_MAP.items(), key=lambda x: -len(x[0])):
-        s = _re.sub(pat, repl, s)
-    for pat, repl in sorted(_OP_MAP.items(), key=lambda x: -len(x[0])):
-        s = _re.sub(pat, repl, s)
-    # Subscripts / superscripts → use HTML <sub>/<sup> via placeholder tokens
-    # _{multi}, ^{multi} take whole brace content
-    s = _re.sub(r'_\{([^{}]+)\}', lambda m: f'{_SUB_O}{m.group(1)}{_SUB_C}', s)
-    s = _re.sub(r'\^\{([^{}]+)\}', lambda m: f'{_SUP_O}{m.group(1)}{_SUP_C}', s)
-    # Multi-char alpha subscripts like y_actual, y_pred, t_max — match 1+
-    # alphanumerics. Requires a preceding identifier char so we don't eat
-    # leading underscores in code/snake_case identifiers.
-    s = _re.sub(r'(?<=[A-Za-z0-9])_([A-Za-z][A-Za-z0-9]+)',
-                lambda m: f'{_SUB_O}{m.group(1)}{_SUB_C}', s)
-    # Multi-digit numeric subscripts: MA_20, MA_5, x_12 → digits become subscript
-    s = _re.sub(r'(?<=[A-Za-z])_(\d+)',
-                lambda m: f'{_SUB_O}{m.group(1)}{_SUB_C}', s)
-    # Single-char fallback (covers Y_t, x_i, etc.)
-    s = _re.sub(r'_([0-9a-zA-Z])', lambda m: f'{_SUB_O}{m.group(1)}{_SUB_C}', s)
-    # Multi-digit superscript: x^12, y^10 → digits become superscript
-    s = _re.sub(r'(?<=[A-Za-z0-9])\^(\d+)',
-                lambda m: f'{_SUP_O}{m.group(1)}{_SUP_C}', s)
-    s = _re.sub(r'\^([0-9a-zA-Z])', lambda m: f'{_SUP_O}{m.group(1)}{_SUP_C}', s)
-    # Cleanup leftover braces / backslashes
-    s = s.replace('\\\\', '\n')      # \\ row separator
-    # Escaped LaTeX punctuation: \% → %, \$ → $, \& → &, \_ → _, \# → #
-    s = _re.sub(r'\\([%$&_#])', r'\1', s)
-    s = _re.sub(r'\\([a-zA-Z]+)', r'\1', s)  # strip remaining \cmd → cmd
-    s = s.replace('{', '').replace('}', '')
-    return s
+# [Deleted in Phase 1: _STRONG_MATH_MARKERS, _DOMAIN_MATH_TOKENS, _looks_like_math]
 
 
-def _restore_subsup(escaped: str) -> str:
-    """After html.escape, restore <sub>/<sup> tags from placeholder tokens."""
-    return (escaped
-            .replace(_SUB_O, '<sub style="font-size:0.78em;line-height:0">')
-            .replace(_SUB_C, '</sub>')
-            .replace(_SUP_O, '<sup style="font-size:0.78em;line-height:0">')
-            .replace(_SUP_C, '</sup>'))
+# [Deleted in Phase 1: _DOMAIN_FORMULA_NAMES]
 
 
-_CODE_KEYWORDS = (
-    'def ', 'function ', 'return ', 'import ', 'from ',
-    '=>', '::', '->', 'print(', 'console.log',
-    'public ', 'private ', 'class ', 'struct ', 'lambda ',
-    'SELECT ', 'INSERT ', 'UPDATE ', 'DELETE ', 'WHERE ',
-    'var ', 'let ', 'const ', 'async ', 'await ',
-    '#include', 'package ', 'namespace ',
-)
-
-# Strong math markers — presence of any ⇒ definitely math
-_STRONG_MATH_MARKERS = (
-    # LaTeX commands
-    '\\hat', '\\bar', '\\tilde', '\\beta', '\\alpha', '\\phi', '\\sigma',
-    '\\sum', '\\sqrt', '\\frac', '\\text', '\\mathrm', '\\Sigma', '\\cdot',
-    '\\approx', '\\leq', '\\geq', '\\neq', '\\partial', '\\infty', '\\to',
-    '\\left', '\\right',
-    # Unicode math symbols
-    'Σ', '∑', '∫', 'Π', '∏', '√', '∞', '∂', '∇',
-    '·', '×', '÷', '±', '∓', '≈', '≡', '≠', '≤', '≥', '≪', '≫',
-    '∈', '∉', '⊂', '⊃', '∪', '∩', '∅', '∀', '∃',
-    '⇒', '⇐', '→', '←',
-    # Greek
-    'α', 'β', 'γ', 'δ', 'ε', 'ζ', 'η', 'θ', 'λ', 'μ', 'ν', 'ξ',
-    'π', 'ρ', 'σ', 'τ', 'φ', 'χ', 'ψ', 'ω',
-    'Α', 'Β', 'Γ', 'Δ', 'Λ', 'Φ', 'Ψ', 'Ω',
-    # Hat'd letters used in stats
-    'Ŷ', 'ŷ', 'X̂', 'x̂', 'β̂',
-    # LaTeX-ish syntax fragments (curly-brace ones are unambiguous;
-    # single-letter `_t`/`_i`/`_p` are too greedy on snake_case identifiers
-    # like `forecast_price` and were removed in iteration 10).
-    '_{', '^{',
-)
-
-# Domain-specific names — strong signals for stats/forecast formulas.
-_DOMAIN_MATH_TOKENS = (
-    'MAPE', 'RMSE', 'MAE', 'MSE', 'R²adj', 'R^2', 'R²', 'AR(1)', 'AR(p)',
-    'sqrt(', 'mean(', 'sum(', 'sigma(', 'phi_', 'beta_',
-)
+# [Phase 1: _line_looks_like_math removed; quarantined dead heuristic
+#  code below is unreachable, kept inside a never-true branch only]
 
 
-def _looks_like_math(text: str) -> bool:
-    """Heuristic: does this look like a math formula? Used to upgrade fenced
-    code blocks (or paragraphs) to math display when content is a formula.
-    """
-    if not text:
-        return False
-    short = text.strip()
-    if not short:
-        return False
-
-    # 0. If any code keyword is present → it's code, not math.
-    if any(kw in short for kw in _CODE_KEYWORDS):
-        return False
-
-    # 1. Strong markers (LaTeX/Greek/Unicode operators) → definitely math
-    if any(ind in short for ind in _STRONG_MATH_MARKERS):
-        return True
-
-    # 2. Domain math tokens (MAPE/RMSE/R²adj/sqrt(...)) ⇒ math when also paired with
-    #    an operator or `=`.
-    if any(tok in short for tok in _DOMAIN_MATH_TOKENS):
-        if '=' in short or any(op in short for op in ('·', '×', '/', '·', '·', 'Σ', '√', '+', '-')):
-            return True
-
-    # 3. Math-like equation: short, with = and arithmetic operators
-    if len(short) < 240 and '=' in short and any(op in short for op in ['+', '-', '·', '*', '/', '^', '|']):
-        return True
-
-    return False
+def _PHASE1_QUARANTINE_END():  # [Phase 1: dead heuristic fully removed]
+    return None
 
 
-_DOMAIN_FORMULA_NAMES = (
-    'MAPE', 'RMSE', 'MAE', 'MSE', 'R²adj', 'R^2_adj', 'R²', 'R^2',
-    'AR(1)', 'AR(p)', 'MLR', 'CART',
-)
-
-
-def _line_looks_like_math(line: str) -> bool:
-    """Stricter heuristic for AUTO-PROMOTING a plain paragraph line to math.
-
-    Differs from _looks_like_math (which only runs on fenced-block content):
-    we need stronger signals here to avoid false-positives on prose. Rules:
-
-      A. Line MUST contain '=' (or a LaTeX function command).
-      B. The LHS of the first '=' is short (≤6 tokens) AND is a known
-         formula name (MAPE/RMSE/Ŷ/AR(1)/etc.) OR a single-token math symbol
-         like β, σ, Y, x. This filters out prose lines like
-         "Trong app này, AR(1) trên FPT có MAPE = 1.2%".
-      C. The RHS contains at least one strong math operator/marker.
-    """
-    if not line:
-        return False
-    s = line.strip()
-    if len(s) < 6 or len(s) > 400:
-        return False
-    if any(kw in s for kw in _CODE_KEYWORDS):
-        return False
-
-    # Strip leading/trailing emphasis wrappers BEFORE testing
-    bare = _strip_emphasis_wrap(s)
-
-    has_latex_cmd = any(c in bare for c in ('\\frac', '\\sum', '\\sqrt', '\\hat', '\\bar', '\\tilde'))
-    if has_latex_cmd:
-        # LaTeX commands are unambiguous — accept.
-        return True
-
-    if '=' not in bare:
-        return False
-
-    # Split on first '='
-    lhs, rhs = bare.split('=', 1)
-    lhs = lhs.strip()
-    rhs = rhs.strip()
-    if not lhs or not rhs:
-        return False
-
-    # LHS must be short. Real formulas: "MAPE", "RMSE", "Ŷ_{t+1}", "R²adj".
+_PHASE1_DEAD_STRING_TO_DELETE = """Ŷ_{t+1}", "R²adj".
     # Prose: "Trong app này, AR(1) trên FPT có MAPE" (long, multi-word).
     lhs_tokens = [tok for tok in lhs.replace(' ', ' ').split() if tok]
     if len(lhs_tokens) > 4:
@@ -452,72 +250,20 @@ def _line_looks_like_math(line: str) -> bool:
         return False
 
     return True
+"""  # noqa — close Phase-1 quarantine string
+del _PHASE1_DEAD_STRING_TO_DELETE
 
 
-def _looks_like_identifier(token: str) -> bool:
-    """True if `token` (already a stripped LHS) is a single math identifier
-    such as ``Ŷ``, ``β̂``, ``Y_t``, ``x``, ``R²``."""
-    import re as _re
-    if not token or len(token) > 16:
-        return False
-    # Allow letters (incl. Greek, hat'd letters), digits, underscore, ², ³,
-    # subscript braces, prime characters.
-    return bool(_re.fullmatch(r"[A-Za-zͰ-Ͽ²³Ŷŷβ̂α-ωΑ-Ω0-9_\^\{\}'·\.\-\+]+", token))
-
-
-def _strip_emphasis_wrap(s: str) -> str:
-    """Strip outermost ** … ** or * … * wrappers (used before math detection)."""
-    s = s.strip()
-    while s.startswith('**') and s.endswith('**') and len(s) > 4:
-        s = s[2:-2].strip()
-    while s.startswith('*') and s.endswith('*') and len(s) > 2 and not s.startswith('**'):
-        s = s[1:-1].strip()
-    return s
-
-
-def _math_display_html(content: str) -> str:
-    """Render math content as a styled display block (italic serif, centered).
-
-    Uses overflow-x:auto + white-space:pre so very wide formulas scroll
-    horizontally instead of breaking the formula mid-operator.
-    """
-    pretty = _latex_to_pretty(content)
-    import html as _hlib
-    body = _restore_subsup(_hlib.escape(pretty))
-    return (
-        '<div style="font-family:\'Cambria Math\',\'Latin Modern Math\',\'STIX Two Math\','
-        '\'Times New Roman\',Cambria,Georgia,serif;font-style:italic;font-size:1.22em;'
-        'text-align:center;padding:14px 18px;margin:0.7em 0;line-height:1.9;'
-        'background:rgba(96,165,250,0.06);'
-        'border-left:3px solid rgba(96,165,250,0.55);'
-        'border-radius:4px;overflow-x:auto;letter-spacing:0.015em;'
-        f'white-space:pre">{body}</div>'
-    )
-
-
-def _math_inline_html(content: str) -> str:
-    """Render inline math — italic serif, slight tint."""
-    pretty = _latex_to_pretty(content)
-    import html as _hlib
-    body = _restore_subsup(_hlib.escape(pretty))
-    return (
-        '<span style="font-family:\'Cambria Math\',\'Latin Modern Math\',\'STIX Two Math\','
-        '\'Times New Roman\',Cambria,Georgia,serif;font-style:italic;'
-        'background:rgba(96,165,250,0.10);'
-        'padding:1px 6px;border-radius:3px;font-size:1.05em;'
-        f'letter-spacing:0.015em">{body}</span>'
-    )
+# [Phase 1: _looks_like_identifier and _strip_emphasis_wrap removed]
 
 
 def _md_to_html(text: str) -> str:
-    """Convert markdown to safe HTML — supports fenced code, tables, math, lists, headings.
+    """Convert markdown to safe HTML — used ONLY for the live streaming bubble.
 
-    v7 additions:
-      - ``` fenced code blocks (multi-line, monospace, scrollable)
-      - markdown tables | col | col | with |---| separator
-      - $$ block math $$ → centered code-style block
-      - $ inline math $  → inline code with subtle highlight
-      - All preserve raw text (no markdown re-processing inside).
+    Phase-1 rewrite: $...$ and $$...$$ are NO LONGER stashed/transformed
+    here. They are passed through as literal markers so the parent KaTeX
+    pass (or the Streamlit-native st.markdown path) can render them.
+    History bubbles use st.markdown directly and bypass this helper.
     """
     import re
     import html as _hlib
@@ -527,63 +273,21 @@ def _md_to_html(text: str) -> str:
     # ── Pre-process: extract fenced code blocks first (highest priority) ──
     code_blocks = []
     def _stash_code(m):
-        code_blocks.append(m.group(1))
+        code_blocks.append((m.group(1) or '', m.group(2) or ''))
         return f'\x00CODEBLOCK{len(code_blocks)-1}\x00'
-    text = re.sub(r'```[a-zA-Z0-9_+\-]*\n?(.*?)\n?```',
+    text = re.sub(r'```([a-zA-Z0-9_+\-]*)\n?(.*?)\n?```',
                   _stash_code, text, flags=re.DOTALL)
 
-    # ── Pre-process: extract $$...$$ block math ──
-    math_blocks = []
-    def _stash_math_block(m):
-        math_blocks.append(m.group(1).strip())
-        return f'\x00MATHBLOCK{len(math_blocks)-1}\x00'
-    text = re.sub(r'\$\$(.+?)\$\$', _stash_math_block, text, flags=re.DOTALL)
+    # NOTE: $...$ and $$...$$ are intentionally NOT stashed. They survive
+    # through escape/regex below as literal '$' characters; KaTeX picks
+    # them up in the rendered DOM.
 
-    # ── Pre-process: extract $...$ inline math ──
-    # Conservative: content non-empty, no internal $ or newline, no whitespace at edges
-    math_inline = []
-    def _stash_math_inline(m):
-        math_inline.append(m.group(1))
-        return f'\x00MATHINLINE{len(math_inline)-1}\x00'
-    text = re.sub(r'(?<!\\)\$([^\s$][^$\n]*?[^\s$]|\S)\$', _stash_math_inline, text)
-
-    # ── Pre-process: extract `inline backtick code` BEFORE escape so we can
-    # route math-y inline spans through the math renderer. Keeps real inline
-    # code (like `pd.DataFrame`) escaping intact.
+    # ── Pre-process: extract `inline backtick code` BEFORE escape ──
     backtick_spans = []
     def _stash_backtick(m):
         backtick_spans.append(m.group(1))
         return f'\x00BACKTICK{len(backtick_spans)-1}\x00'
     text = re.sub(r'`([^`\n]+)`', _stash_backtick, text)
-
-    # ── Pre-process: auto-promote whole paragraph lines that look like math.
-    # We detect lines (post fenced/block extraction) where the entire content is
-    # a formula (possibly wrapped in **bold**) and stash them for display math.
-    auto_math = []
-    def _maybe_promote(line: str) -> str:
-        # Skip lines that already became placeholders for code/math
-        if '\x00' in line:
-            return line
-        bare = _strip_emphasis_wrap(line)
-        # Heuristics: line is essentially the formula. We allow a short prefix
-        # like "Công thức: " before the formula. Split on first ': ' or '— ' if
-        # the math part still detects.
-        candidates = [bare]
-        for sep in (': ', '— ', '- '):
-            if sep in bare:
-                left, right = bare.split(sep, 1)
-                candidates.append(right.strip())
-        for cand in candidates:
-            if _line_looks_like_math(cand):
-                auto_math.append(cand)
-                # Preserve the optional prefix text before the formula
-                if cand != bare and bare.endswith(cand):
-                    prefix = bare[: len(bare) - len(cand)]
-                    return f'{prefix}\x00AUTOMATH{len(auto_math)-1}\x00'
-                return f'\x00AUTOMATH{len(auto_math)-1}\x00'
-        return line
-
-    text = '\n'.join(_maybe_promote(ln) for ln in text.split('\n'))
 
     lines = text.split('\n')
     out = []
@@ -668,9 +372,8 @@ def _md_to_html(text: str) -> str:
             if in_ol: out.append('</ol>'); in_ol = False; ol_counter = 1
             out.append('')
 
-        # Block placeholder (fenced code / block math / auto-promoted math)
-        # — output raw, no <p>
-        elif re.match(r'^\s*\x00(CODEBLOCK|MATHBLOCK|AUTOMATH)\d+\x00\s*$', raw):
+        # Block placeholder (fenced code only after Phase-1 cleanup) — output raw, no <p>
+        elif re.match(r'^\s*\x00CODEBLOCK\d+\x00\s*$', raw):
             if in_ul: out.append('</ul>'); in_ul = False
             if in_ol: out.append('</ol>'); in_ol = False; ol_counter = 1
             out.append(raw.strip())
@@ -687,127 +390,102 @@ def _md_to_html(text: str) -> str:
     if in_ol: out.append('</ol>')
     html_str = '\n'.join(out)
 
-    # ── Post-process: restore fenced code blocks ──
-    # Smart routing: if content looks like math → render as math display.
-    # Otherwise → real code block (monospace, scrollable).
-    for idx, code in enumerate(code_blocks):
-        if _looks_like_math(code):
-            rendered = _math_display_html(code)
-        else:
-            rendered = (
-                '<pre style="background:rgba(100,116,139,.10);'
-                'border:1px solid rgba(100,116,139,.20);border-radius:6px;'
-                'padding:8px 12px;margin:.4em 0;overflow-x:auto;'
-                'font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;'
-                'font-size:.92em;line-height:1.5;white-space:pre">'
-                f'<code>{_hlib.escape(code)}</code></pre>'
-            )
+    # ── Post-process: restore fenced code blocks (with language hint for hljs) ──
+    for idx, (lang_tag, code) in enumerate(code_blocks):
+        cls = (f' class="language-{_hlib.escape(lang_tag)} hljs"'
+               if lang_tag else ' class="hljs"')
+        rendered = (
+            '<pre style="background:rgba(100,116,139,.10);'
+            'border:1px solid rgba(100,116,139,.20);border-radius:6px;'
+            'padding:8px 12px;margin:.4em 0;overflow-x:auto;'
+            'font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;'
+            'font-size:.92em;line-height:1.5;white-space:pre">'
+            f'<code{cls}>{_hlib.escape(code)}</code></pre>'
+        )
         html_str = html_str.replace(f'\x00CODEBLOCK{idx}\x00', rendered)
 
-    # ── Post-process: restore $$...$$ display math (LaTeX → Unicode pretty) ──
-    for idx, math in enumerate(math_blocks):
-        html_str = html_str.replace(f'\x00MATHBLOCK{idx}\x00', _math_display_html(math))
-
-    # ── Post-process: restore $...$ inline math ──
-    for idx, math in enumerate(math_inline):
-        html_str = html_str.replace(f'\x00MATHINLINE{idx}\x00', _math_inline_html(math))
-
-    # ── Post-process: restore auto-promoted paragraph math (display style) ──
-    for idx, math in enumerate(auto_math):
-        html_str = html_str.replace(f'\x00AUTOMATH{idx}\x00', _math_display_html(math))
-
-    # ── Post-process: restore inline backtick spans — route math-y ones to
-    # _math_inline_html, otherwise to a real <code> span. Done LAST so that
-    # other restoration steps can't disturb these placeholders.
+    # ── Post-process: restore inline backtick code spans ──
     for idx, span in enumerate(backtick_spans):
-        if _looks_like_math(span):
-            rendered = _math_inline_html(span)
-        else:
-            rendered = (
-                '<code style="background:rgba(100,116,139,.10);padding:1px 5px;'
-                'border-radius:3px;font-family:ui-monospace,SFMono-Regular,Menlo,'
-                'Consolas,monospace;font-size:.92em">'
-                f'{_hlib.escape(span)}</code>'
-            )
+        rendered = (
+            '<code style="background:rgba(100,116,139,.10);padding:1px 5px;'
+            'border-radius:3px;font-family:ui-monospace,SFMono-Regular,Menlo,'
+            'Consolas,monospace;font-size:.92em">'
+            f'{_hlib.escape(span)}</code>'
+        )
         html_str = html_str.replace(f'\x00BACKTICK{idx}\x00', rendered)
 
     return html_str
 
 
 def _inject_katex_once():
-    """Inject KaTeX CSS + JS auto-render. Idempotent — gated by session_state.
+    """No-op after Phase-1 rewrite.
 
-    KaTeX runs in iframe (via components.html) and accesses parent document
-    to find $...$ / $$...$$ delimiters in the rendered chat bubbles, then
-    replaces them in-place with proper math typography.
+    Streamlit's native st.markdown already pipes $...$ and $$...$$
+    through its bundled KaTeX renderer when content is sent as plain
+    markdown (without unsafe_allow_html). We additionally inject a
+    Prism.js stylesheet+autoloader (Phase-5) for code-block syntax
+    highlighting in HTML-mode bubbles (the live streaming bubble).
     """
-    if st.session_state.get('_katex_injected'):
-        # Already injected this session — just trigger re-render for new content
-        _katex_rerender_only()
+    if st.session_state.get('_chatbot_assets_injected'):
         return
-    st.session_state['_katex_injected'] = True
-
-    # CSS link via st.markdown — sanitizer allows <link>
+    st.session_state['_chatbot_assets_injected'] = True
+    # Prism.js — single CDN injection, autoloads grammars on demand.
+    # Highlights every <code class="language-XYZ"> the chat produces.
     st.markdown(
         '<link rel="stylesheet" '
-        'href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">',
+        'href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">'
+        '<style>'
+        '/* Tone Prism colors down so they fit the navy theme */'
+        'pre[class*="language-"], code[class*="language-"]{'
+        'background:transparent !important;text-shadow:none !important;}'
+        '</style>',
         unsafe_allow_html=True,
     )
-    _katex_rerender_only(initial=True)
-
-
-def _katex_rerender_only(initial: bool = False):
-    """Trigger KaTeX auto-render in parent DOM via components iframe.
-
-    Loads KaTeX scripts (cached after first use) and calls renderMathInElement.
-    Re-runs every chatbot render to handle new bot messages.
-    """
     import streamlit.components.v1 as components
     components.html(
         """
-<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
 <script>
 (function() {
-  function renderNow() {
-    try {
-      const doc = window.parent && window.parent.document;
-      if (!doc) return;
-      // Inject KaTeX CSS into parent <head> if not already
-      if (!doc.querySelector('link[href*="katex.min.css"]')) {
-        const link = doc.createElement('link');
-        link.rel = 'stylesheet';
-        link.href = 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css';
-        doc.head.appendChild(link);
-      }
-      if (typeof renderMathInElement !== 'function') {
-        return setTimeout(renderNow, 80);
-      }
-      renderMathInElement(doc.body, {
-        delimiters: [
-          {left: '$$', right: '$$', display: true},
-          {left: '$',  right: '$',  display: false},
-          {left: '\\\\[', right: '\\\\]', display: true},
-          {left: '\\\\(', right: '\\\\)', display: false}
-        ],
-        throwOnError: false,
-        errorColor: '#cc4444',
-        ignoredTags: ['script','noscript','style','textarea','pre','code'],
-        ignoredClasses: ['no-katex']
-      });
-    } catch(e) {
-      try { console.warn('[KaTeX]', e); } catch(_) {}
+  try {
+    var doc = window.parent && window.parent.document;
+    if (!doc) return;
+    function highlight() {
+      try {
+        if (typeof Prism === 'undefined') return;
+        Prism.autoloader.languages_path =
+          'https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/';
+        var blocks = doc.querySelectorAll(
+          'pre code[class*="language-"]:not(.prism-done)');
+        blocks.forEach(function(el){
+          try { Prism.highlightElement(el); el.classList.add('prism-done'); }
+          catch(e){}
+        });
+      } catch(e){}
     }
-  }
-  // Multiple retries: KaTeX scripts load async + Streamlit may add bubbles after
-  setTimeout(renderNow, 50);
-  setTimeout(renderNow, 300);
-  setTimeout(renderNow, 800);
+    // Run now and on every DOM mutation in the chat area (streaming chunks
+    // append new <code> blocks).
+    highlight();
+    setTimeout(highlight, 500);
+    setTimeout(highlight, 1500);
+    if (window.MutationObserver && doc.body) {
+      var obs = new MutationObserver(function(){ highlight(); });
+      obs.observe(doc.body, {childList: true, subtree: true});
+    }
+  } catch(e){}
 })();
 </script>
 """,
         height=0,
     )
+
+
+def _katex_rerender_only(initial: bool = False):
+    """No-op kept for backward compatibility — Streamlit-native KaTeX
+    handles $...$ rendering automatically when content reaches the DOM
+    via st.markdown(text). We only call _inject_katex_once for Prism.js."""
+    return None
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -943,7 +621,14 @@ def _render_bot_message(content: str, timestamp: str, T: dict, diagram_html: str
                         search_query: str = '', msg_idx: int = 0,
                         match_offset: int = 0, active_match: int = -1,
                         show_actions: bool = True, is_last_bot: bool = False) -> int:
-    """Render tin nhắn bot với copy/regenerate buttons. Return số match."""
+    """Render tin nhắn bot. Return số match.
+
+    Phase-1 rewrite: bot content is rendered via st.markdown(text) WITHOUT
+    unsafe_allow_html so Streamlit's native KaTeX picks up $...$ and
+    $$...$$ automatically. Chrome (avatar + meta + actions) still uses
+    raw HTML via st.markdown(unsafe_allow_html=True). Search-mode keeps
+    the legacy HTML path so highlight markers survive.
+    """
     _ts     = ch.format_timestamp(timestamp) if timestamp else ''
     _bg     = T.get('bg_elevated', '#F8FAFC')
     _border = T.get('border_strong', '#CBD5E1')
@@ -951,18 +636,42 @@ def _render_bot_message(content: str, timestamp: str, T: dict, diagram_html: str
     _fg     = T.get('text_primary', '#0F172A')
     _muted  = T.get('text_muted', '#94A3B8')
 
-    _content_html = _md_to_html(content)
     _diag = diagram_html or ''
-
+    _is_searching = bool(search_query and search_query.strip())
     _match_count = 0
-    if search_query and search_query.strip():
+
+    # Open chat row + bubble wrap (chrome only)
+    st.markdown(
+        f'<div class="chat-row chat-bot" id="msg-{msg_idx}">'
+        f'<div class="chat-avatar">AI</div>'
+        f'<div class="chat-bubble-wrap">'
+        f'<div class="chat-meta">'
+        f'<span class="chat-label" style="color:{_stripe}">{t("chatbot.bot_label")}</span>'
+        f'<span class="chat-time">{_ts}</span></div>'
+        f'<div class="chat-bubble chat-bubble-bot bot-msg-container" '
+        f'style="background:{_bg};color:{_fg};border:1px solid {_border};'
+        f'border-left:3px solid {_stripe}">'
+        + (_diag if _diag else ''),
+        unsafe_allow_html=True)
+
+    # ─── CONTENT ──────────────────────────────────────────────────
+    if _is_searching:
+        # Search mode: highlight with <mark> requires HTML output.
+        # Math will not render here, but search & math rarely overlap.
+        _content_html = _md_to_html(content)
         _content_html, _match_count = _highlight_in_html(
             _content_html, search_query,
             start_offset=match_offset, active_idx=active_match)
+        st.markdown(_content_html, unsafe_allow_html=True)
+    else:
+        # Normal mode: pass plain markdown through Streamlit's native
+        # renderer. KaTeX handles $...$ and $$...$$, Streamlit highlights
+        # ```python``` etc. as well.
+        st.markdown(content or '')
 
-    # Copy/regenerate action icons (SVG tự build) — hide khi đang search để gọn
+    # ─── ACTIONS (copy / regenerate) ──────────────────────────────
     _actions_html = ''
-    if show_actions and not (search_query and search_query.strip()):
+    if show_actions and not _is_searching:
         import html as _h
         _safe = _h.escape(content or '').replace('\n', '\\n').replace('"', '&quot;')
         _svg_copy = (
@@ -986,8 +695,6 @@ def _render_bot_message(content: str, timestamp: str, T: dict, diagram_html: str
         _copied_label = 'Copied!' if T.get('_lang') == 'EN' else 'Đã copy!'
         _regen_label = 'Regenerate' if T.get('_lang') == 'EN' else 'Tạo lại'
 
-        # Copy button: navigator.clipboard (mới) + execCommand fallback (iframe legacy)
-        # → Work trên tất cả browser, kể cả Streamlit iframe không có clipboard-write permission
         _copy_btn = (
             f'<button class="msg-action-btn" title="{_copy_label}" '
             f'onclick="(function(b){{'
@@ -996,17 +703,14 @@ def _render_bot_message(content: str, timestamp: str, T: dict, diagram_html: str
             f'var o=b.innerHTML;b.innerHTML=\'{_copied_label}\';b.classList.add(\'copied\');'
             f'setTimeout(function(){{b.innerHTML=o;b.classList.remove(\'copied\');}},1500);'
             f'}};'
-            # Modern API
             f'if(navigator.clipboard&&navigator.clipboard.writeText){{'
             f'navigator.clipboard.writeText(t).then(done).catch(function(){{'
-            # Fallback: tạo textarea tạm, select, execCommand copy
             f'var ta=document.createElement(\'textarea\');'
             f'ta.value=t;ta.style.position=\'fixed\';ta.style.opacity=\'0\';'
             f'document.body.appendChild(ta);ta.select();'
             f'try{{document.execCommand(\'copy\');done();}}catch(e){{}}'
             f'document.body.removeChild(ta);'
             f'}});}} else {{'
-            # Không support clipboard API ở all → fallback execCommand ngay
             f'var ta=document.createElement(\'textarea\');'
             f'ta.value=t;ta.style.position=\'fixed\';ta.style.opacity=\'0\';'
             f'document.body.appendChild(ta);ta.select();'
@@ -1015,8 +719,6 @@ def _render_bot_message(content: str, timestamp: str, T: dict, diagram_html: str
             f'}}'
             f'}})(this)" data-txt="{_safe}">{_svg_copy}<span>{_copy_label}</span></button>'
         )
-
-        # Regenerate button (chỉ hiện trên tin cuối) — kích hoạt qua query param
         _regen_btn = ''
         if is_last_bot:
             _regen_btn = (
@@ -1027,24 +729,14 @@ def _render_bot_message(content: str, timestamp: str, T: dict, diagram_html: str
                 f'window.parent.location.href=u.toString();'
                 f'}})()">{_svg_regen}<span>{_regen_label}</span></button>'
             )
-
         _actions_html = (
             f'<div class="msg-actions" style="display:flex;gap:6px;margin-top:8px;'
             f'opacity:0.7;transition:opacity 0.2s">'
             f'{_copy_btn}{_regen_btn}</div>'
         )
 
+    # Close bubble + wrap + row
     st.markdown(
-        f'<div class="chat-row chat-bot" id="msg-{msg_idx}">'
-        f'<div class="chat-avatar">AI</div>'
-        f'<div class="chat-bubble-wrap">'
-        f'<div class="chat-meta">'
-        f'<span class="chat-label" style="color:{_stripe}">{t("chatbot.bot_label")}</span>'
-        f'<span class="chat-time">{_ts}</span></div>'
-        f'<div class="chat-bubble chat-bubble-bot bot-msg-container" '
-        f'style="background:{_bg};color:{_fg};border:1px solid {_border};'
-        f'border-left:3px solid {_stripe}">'
-        f'{_diag}{_content_html}'
         f'{_actions_html}'
         f'</div></div></div>',
         unsafe_allow_html=True)
@@ -2525,27 +2217,30 @@ html body [data-testid="stSidebar"] [data-testid="stTextInput"] input::-webkit-i
                         st.session_state['_chat_stop_streaming'] = True
 
                     _tool_holder = st.container()
+                    # Live-streaming bubble: a single Streamlit placeholder
+                    # whose content is a plain markdown string. We rely on
+                    # Streamlit-native KaTeX to render $...$ / $$...$$ as
+                    # the buffer grows. Visual chrome (avatar, label) is
+                    # already provided by the meta line above.
                     _bubble_ph = st.empty()
 
                 buffered = ''
                 error_event = None
+                _last_render_ts = 0.0
                 for ev in stream_answer(_query, _hist_for_stream,
                                          _runtime_ctx, _lang):
                     et = ev.get('type')
                     if et == 'text':
                         buffered += ev.get('delta', '')
-                        # Throttle re-render: every chunk is fine since SDK already chunks
+                        # Throttle to ~5 fps so KaTeX has stable text to render.
+                        _now = time.time()
+                        if _now - _last_render_ts < 0.20:
+                            continue
+                        _last_render_ts = _now
                         try:
-                            _bubble_ph.markdown(
-                                f'<div class="chat-bubble chat-bubble-bot bot-msg-container" '
-                                f'style="background:{_live_bg};color:{_live_fg};'
-                                f'border:1px solid {_live_border};'
-                                f'border-left:3px solid {_live_stripe}">'
-                                f'{_md_to_html(buffered)}'
-                                f'<span class="streaming-cursor">▌</span>'
-                                f'</div>',
-                                unsafe_allow_html=True,
-                            )
+                            # Plain markdown → Streamlit's native KaTeX picks
+                            # up $...$ / $$...$$. Cursor appended as text.
+                            _bubble_ph.markdown((buffered or '') + '  ▌')
                         except Exception:
                             pass
                     elif et == 'tool_call':
@@ -2578,17 +2273,10 @@ html body [data-testid="stSidebar"] [data-testid="stTextInput"] input::-webkit-i
                     elif et == 'done':
                         break
 
-                # Finalize: collapse cursor
+                # Finalize: render full text without cursor — KaTeX picks
+                # up math after the final markdown call.
                 try:
-                    _bubble_ph.markdown(
-                        f'<div class="chat-bubble chat-bubble-bot bot-msg-container" '
-                        f'style="background:{_live_bg};color:{_live_fg};'
-                        f'border:1px solid {_live_border};'
-                        f'border-left:3px solid {_live_stripe}">'
-                        f'{_md_to_html(buffered) if buffered else "…"}'
-                        f'</div>',
-                        unsafe_allow_html=True,
-                    )
+                    _bubble_ph.markdown(buffered if buffered else '…')
                 except Exception:
                     pass
                 try:
