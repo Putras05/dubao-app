@@ -323,77 +323,6 @@ def compute_metric(metric_name: str, model: str = 'ar') -> dict:
     return {'metric': metric_norm, 'model': mdl, 'value': val, 'unit': unit}
 
 
-def plot_price_chart(days: int = 30, with_ma: bool = True) -> dict:
-    """Render an inline price chart (Plotly) for the user. The chart shows
-    the latest N close prices and optionally MA5 / MA20. Use this when the
-    user asks "vẽ biểu đồ", "show chart", "biểu đồ giá".
-
-    The figure is stored in session_state under a chart-key; the UI then
-    renders it inline above the assistant's answer.
-
-    Args:
-        days: number of sessions to plot (1..120)
-        with_ma: overlay MA5 and MA20 if True
-
-    Returns:
-        dict with: rendered (bool), chart_key (str), n_points, ticker.
-    """
-    s = _state()
-    if not s:
-        return {'error': 'app_state_not_initialized'}
-    df = s.get('df')
-    if df is None or not len(df):
-        return {'error': 'no_data'}
-    n = max(5, min(120, int(days or 30)))
-    tail = df.tail(n).copy()
-    ticker = s.get('ticker', '?')
-    try:
-        import plotly.graph_objects as go
-        fig = go.Figure()
-        # Close in VND (×1000)
-        fig.add_trace(go.Scatter(
-            x=tail['Ngay'], y=tail['Close'] * 1000,
-            mode='lines+markers', name='Close',
-            line=dict(color='#1565C0', width=2.5),
-            marker=dict(size=4),
-        ))
-        if with_ma and 'MA5' in tail.columns:
-            fig.add_trace(go.Scatter(
-                x=tail['Ngay'], y=tail['MA5'] * 1000,
-                mode='lines', name='MA5',
-                line=dict(color='#F59E0B', width=1.5, dash='dot'),
-            ))
-        if with_ma and 'MA20' in tail.columns:
-            fig.add_trace(go.Scatter(
-                x=tail['Ngay'], y=tail['MA20'] * 1000,
-                mode='lines', name='MA20',
-                line=dict(color='#7C3AED', width=1.5, dash='dash'),
-            ))
-        fig.update_layout(
-            title=f'{ticker} — {n} phiên gần nhất',
-            xaxis_title='', yaxis_title='Giá (VND)',
-            height=320, margin=dict(l=10, r=10, t=40, b=10),
-            showlegend=True, legend=dict(orientation='h', y=-0.15),
-            hovermode='x unified',
-            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-        )
-        # Stash in session_state so UI can render
-        try:
-            charts = st.session_state.setdefault('_chatbot_inline_charts', {})
-            key = f'price_{ticker}_{n}_{int(bool(with_ma))}'
-            charts[key] = fig
-            # Also queue it for the next assistant message
-            queue = st.session_state.setdefault('_chatbot_inline_queue', [])
-            queue.append(key)
-        except Exception:
-            key = ''
-        return {'rendered': True, 'chart_key': key,
-                'n_points': len(tail), 'ticker': ticker,
-                'with_ma': bool(with_ma)}
-    except Exception as e:
-        return {'error': f'plot_failed: {str(e)[:120]}'}
-
-
 def switch_ticker(ticker: str) -> dict:
     """Switch the in-memory data context to a different ticker for THIS
     answer only. Useful when the user explicitly asks about FPT but the
@@ -454,17 +383,7 @@ AVAILABLE_TOOLS = [
     get_price_history,
     get_portfolio,
     compute_metric,
-    plot_price_chart,
     switch_ticker,
 ]
 
 
-def consume_inline_charts() -> list:
-    """Pop the queue of inline-chart keys produced by tool calls during the
-    current turn. Returns list of (key, figure) pairs. Resets the queue."""
-    try:
-        queue = st.session_state.pop('_chatbot_inline_queue', []) or []
-        charts = st.session_state.get('_chatbot_inline_charts', {}) or {}
-        return [(k, charts[k]) for k in queue if k in charts]
-    except Exception:
-        return []

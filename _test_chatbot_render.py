@@ -573,7 +573,8 @@ def _smoke_imports():
         assert 'get_current_ticker_data' in names
         assert 'get_forecast_results' in names
         assert 'get_technical_signals' in names
-        assert 'plot_price_chart' in names
+        # plot_price_chart removed by user request — chatbot is text-only
+        assert 'plot_price_chart' not in names
         # has_state should be False before set_app_state
         assert ct.has_state() is False
         # Each tool must be callable + return dict-ish on empty state
@@ -584,8 +585,6 @@ def _smoke_imports():
                     res = fn('MAPE', 'ar')
                 elif fn.__name__ == 'switch_ticker':
                     res = fn('FPT')
-                elif fn.__name__ == 'plot_price_chart':
-                    res = fn(30, True)
                 elif fn.__name__ == 'get_price_history':
                     res = fn(30)
                 else:

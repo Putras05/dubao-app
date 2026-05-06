@@ -942,8 +942,7 @@ def _render_user_message(content: str, timestamp: str, T: dict,
 def _render_bot_message(content: str, timestamp: str, T: dict, diagram_html: str = None,
                         search_query: str = '', msg_idx: int = 0,
                         match_offset: int = 0, active_match: int = -1,
-                        show_actions: bool = True, is_last_bot: bool = False,
-                        chart_keys: list = None) -> int:
+                        show_actions: bool = True, is_last_bot: bool = False) -> int:
     """Render tin nhắn bot với copy/regenerate buttons. Return số match."""
     _ts     = ch.format_timestamp(timestamp) if timestamp else ''
     _bg     = T.get('bg_elevated', '#F8FAFC')
@@ -1049,24 +1048,6 @@ def _render_bot_message(content: str, timestamp: str, T: dict, diagram_html: str
         f'{_actions_html}'
         f'</div></div></div>',
         unsafe_allow_html=True)
-
-    # Re-render any inline charts attached to this message (from tool calls).
-    # Figures live in st.session_state['_chatbot_inline_charts'] for the session;
-    # if user reloads browser they're gone — we silently skip in that case.
-    if chart_keys:
-        try:
-            _charts = st.session_state.get('_chatbot_inline_charts', {}) or {}
-            for _k in chart_keys:
-                _fig = _charts.get(_k)
-                if _fig is not None:
-                    st.plotly_chart(
-                        _fig, use_container_width=True,
-                        config={'displayModeBar': False},
-                        key=f'inline_chart_{msg_idx}_{_k}',
-                    )
-        except Exception:
-            pass
-
     return _match_count
 
 
@@ -2167,8 +2148,7 @@ html body [data-testid="stSidebar"] [data-testid="stTextInput"] input::-webkit-i
                         msg.get('diagram'),
                         search_query=_search_msg_q, msg_idx=i,
                         match_offset=_total_hits, active_match=_active_match,
-                        is_last_bot=(i == _last_bot_idx),
-                        chart_keys=msg.get('chart_keys'))
+                        is_last_bot=(i == _last_bot_idx))
                 _total_hits += _hits
 
             st.session_state['_msg_total_hits_prev'] = _total_hits
@@ -2468,7 +2448,6 @@ html body [data-testid="stSidebar"] [data-testid="stTextInput"] input::-webkit-i
             response = ''
             diagram_html = None
             tool_log: list = []  # list of (name, args, value)
-            inline_chart_keys: list = []
             stream_used = False
 
             try:
@@ -2593,13 +2572,6 @@ html body [data-testid="stSidebar"] [data-testid="stTextInput"] input::-webkit-i
                                 break
                         else:
                             tool_log.append({'name': _name, 'args': {}, 'value': _value})
-                        # If a chart was registered, capture for inline rendering
-                        try:
-                            if (_name == 'plot_price_chart' and isinstance(_value, dict)
-                                    and _value.get('rendered') and _value.get('chart_key')):
-                                inline_chart_keys.append(_value['chart_key'])
-                        except Exception:
-                            pass
                     elif et == 'error':
                         error_event = ev
                         break
@@ -2634,23 +2606,6 @@ html body [data-testid="stSidebar"] [data-testid="stTextInput"] input::-webkit-i
                         _query, _runtime_ctx, ar_order,
                         _runtime_ticker, _runtime_df, _lang, _ai_ok,
                     )
-
-                # Inline chart(s) registered by tool calls — render NOW so the
-                # user sees them immediately, then they'll re-render on next
-                # rerun via the diagram pipeline if persisted.
-                if inline_chart_keys:
-                    try:
-                        charts = st.session_state.get('_chatbot_inline_charts', {}) or {}
-                        with _live_outer:
-                            for _k in inline_chart_keys:
-                                fig = charts.get(_k)
-                                if fig is not None:
-                                    st.plotly_chart(
-                                        fig, use_container_width=True,
-                                        config={'displayModeBar': False},
-                                    )
-                    except Exception:
-                        pass
 
             else:
                 # No streaming available → legacy synchronous path
@@ -2692,6 +2647,5 @@ html body [data-testid="stSidebar"] [data-testid="stTextInput"] input::-webkit-i
             if not (response or '').strip():
                 response = _ai_down_msg(_lang)
 
-            ch.add_message(active_id, 'assistant', response, diagram=diagram_html,
-                           chart_keys=inline_chart_keys or None)
+            ch.add_message(active_id, 'assistant', response, diagram=diagram_html)
             st.rerun()
